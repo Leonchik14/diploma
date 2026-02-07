@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "proto/auth";
+
+import "common.proto";
+
+message RegisterRequest {
+  string first_name = 1;
+  string last_name = 2;
+  string email = 3;
+  string password = 4;
+  string device_id = 5;
+}
+
+message RegisterResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  UserProfile user = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+  string device_id = 3;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  UserProfile user = 3;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+  string device_id = 2;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+  UserProfile user = 2;
+}
+
+message UserProfile {
+  uint32 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string email = 4;
+  string username = 5; // для обратной совместимости (логин), может совпадать с email
+}
+
+message PasswordResetCheckEmailRequest {
+  string email = 1;
+}
+
+message PasswordResetCheckEmailResponse {
+  bool exists = 1;
+}
+
+message PasswordResetSendCodeRequest {
+  string email = 1;
+}
+
+message PasswordResetSendCodeResponse {
+  bool sent = 1;
+}
+
+message PasswordResetVerifyRequest {
+  string email = 1;
+  string code = 2;
+  string password = 3;
+}
+
+message PasswordResetVerifyResponse {
+  bool success = 1;
+}
+
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  rpc CheckPasswordResetEmail(PasswordResetCheckEmailRequest) returns (PasswordResetCheckEmailResponse);
+  rpc SendPasswordResetCode(PasswordResetSendCodeRequest) returns (PasswordResetSendCodeResponse);
+  rpc VerifyPasswordReset(PasswordResetVerifyRequest) returns (PasswordResetVerifyResponse);
+}

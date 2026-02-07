@@ -1,0 +1,224 @@
+# Docker Compose загружает переменные из .env в корне проекта.
+# Скопируйте .env.example в .env и заполните значения. Не коммитьте .env.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: diploma-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-in-production}
+      POSTGRES_DB: ${POSTGRES_DB:-diploma}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: diploma-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-dev-only-change-in-production}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: diploma-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-dev-only-change-in-production}
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      /usr/bin/mc mb myminio/materials || true;
+      exit 0;
+      "
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    container_name: api-gateway
+    environment:
+      PORT: ${PORT:-9090}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-user-service:9091}
+      MATERIALS_SERVICE_URL: ${MATERIALS_SERVICE_URL:-materials-service:9092}
+      COACH_SERVICE_URL: ${COACH_SERVICE_URL:-career-coach-service:9093}
+      JOBS_SERVICE_URL: ${JOBS_SERVICE_URL:-job-service:9094}
+      CALENDAR_SERVICE_URL: ${CALENDAR_SERVICE_URL:-calendar-service:9095}
+    ports:
+      - "9090:9090"
+    depends_on:
+      - user-service
+      - materials-service
+      - career-coach-service
+      - job-service
+      - calendar-service
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9090 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  user-service:
+    build:
+      context: .
+      dockerfile: ./user-service/Dockerfile
+    container_name: user-service
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:dev-only-change-in-production@postgres:5432/diploma?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      GRPC_PORT: ${GRPC_PORT:-9091}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Interview Prep App}
+      SMTP_TLS: ${SMTP_TLS:-true}
+    ports:
+      - "9091:9091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9091 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  materials-service:
+    build:
+      context: .
+      dockerfile: ./materials-service/Dockerfile
+    container_name: materials-service
+    environment:
+      DB_DSN: ${DB_DSN:-postgres://postgres:dev-only-change-in-production@postgres:5432/diploma?sslmode=disable}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-materials}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      GRPC_PORT: ${GRPC_PORT:-9092}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+    ports:
+      - "9092:9092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  career-coach-service:
+    build:
+      context: .
+      dockerfile: ./career-coach-service/Dockerfile
+    container_name: career-coach-service
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:dev-only-change-in-production@postgres:5432/diploma?sslmode=disable}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      PARSE_MODEL: ${PARSE_MODEL:-meta-llama/llama-3.3-70b-instruct}
+      COACH_MODEL: ${COACH_MODEL:-meta-llama/llama-3.3-70b-instruct}
+      GRPC_PORT: ${GRPC_PORT:-9093}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-30000}
+      MAX_RESUME_CHARS: ${MAX_RESUME_CHARS:-50000}
+      CHAT_HISTORY_LIMIT: ${CHAT_HISTORY_LIMIT:-20}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      MATERIALS_SERVICE_URL: ${MATERIALS_SERVICE_URL:-materials-service:9092}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-user-service:9091}
+    ports:
+      - "9093:9093"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      materials-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9093 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  job-service:
+    build:
+      context: .
+      dockerfile: ./job-service/Dockerfile
+    container_name: job-service
+    environment:
+      GRPC_PORT: ${GRPC_PORT:-9094}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-user-service:9091}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      HH_APP_TOKEN: ${HH_APP_TOKEN}
+      HH_USER_AGENT: ${HH_USER_AGENT:-InterviewPrepApp/1.0}
+      HH_HOST: ${HH_HOST:-api.hh.ru}
+    ports:
+      - "9094:9094"
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9094 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  calendar-service:
+    build:
+      context: .
+      dockerfile: ./calendar-service/Dockerfile
+    container_name: calendar-service
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:dev-only-change-in-production@postgres:5432/diploma?sslmode=disable}
+      GRPC_PORT: ${GRPC_PORT:-9095}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+    ports:
+      - "9095:9095"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9095 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+  minio_data:

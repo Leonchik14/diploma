@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "proto/common";
+
+message Empty {}
+
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+message Pagination {
+  int32 page = 1;
+  int32 per_page = 2;
+  int32 total = 3;
+}
+
+message ID {
+  string id = 1;
+}
+
+message IDs {
+  repeated string ids = 1;
+}

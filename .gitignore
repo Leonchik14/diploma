@@ -1,0 +1,63 @@
+# Environment files and secrets
+.env
+**/.env
+*.env
+!.env.example
+!**/.env.example
+
+# Sensitive or local-only files
+base64.txt
+
+# Extra READMEs (оставляем только корневой README.md)
+README_ENV_SETUP.md
+README_ENV.md
+README_GRPC.md
+job-service/README.md
+user-service/README.md
+calendar-service/README.md
+career-coach-service/README.md
+materials-service/README.md
+
+# Технические / спецификации
+вызов.txt
+пример вызова.txt
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Keys
+*.pem
+*.key
+jwt_private.pem
+jwt_public.pem
+
+# Docker
+.docker/
+
+# Build artifacts
+dist/
+build/
+
+docs/
+diploma-text/

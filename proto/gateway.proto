@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package gateway;
+
+option go_package = "proto/gateway";
+
+import "auth.proto";
+import "user.proto";
+import "materials.proto";
+import "coach.proto";
+import "jobs.proto";
+import "calendar.proto";
+
+service BackendGateway {
+  // Auth
+  rpc Register(auth.RegisterRequest) returns (auth.RegisterResponse);
+  rpc Login(auth.LoginRequest) returns (auth.LoginResponse);
+  rpc Refresh(auth.RefreshRequest) returns (auth.RefreshResponse);
+  rpc CheckPasswordResetEmail(auth.PasswordResetCheckEmailRequest) returns (auth.PasswordResetCheckEmailResponse);
+  rpc SendPasswordResetCode(auth.PasswordResetSendCodeRequest) returns (auth.PasswordResetSendCodeResponse);
+  rpc VerifyPasswordReset(auth.PasswordResetVerifyRequest) returns (auth.PasswordResetVerifyResponse);
+  
+  // User
+  rpc GetMe(user.GetMeRequest) returns (user.GetMeResponse);
+  rpc GetResumeProfile(user.GetResumeProfileRequest) returns (user.GetResumeProfileResponse);
+  rpc UpdateResumeProfile(user.UpdateResumeProfileRequest) returns (user.UpdateResumeProfileResponse);
+  rpc UpdateUserProfile(user.UpdateUserProfileRequest) returns (user.UpdateUserProfileResponse);
+  rpc DeleteAccount(user.DeleteAccountRequest) returns (user.DeleteAccountResponse);
+  
+  // Materials
+  rpc UploadFile(materials.UploadFileRequest) returns (materials.UploadFileResponse);
+  rpc DownloadFile(materials.DownloadFileRequest) returns (materials.DownloadFileResponse);
+  rpc ListFolder(materials.ListFolderRequest) returns (materials.ListFolderResponse);
+  rpc CreateFolder(materials.CreateFolderRequest) returns (materials.CreateFolderResponse);
+  rpc CreateLink(materials.CreateLinkRequest) returns (materials.CreateLinkResponse);
+  rpc RenameNode(materials.RenameNodeRequest) returns (materials.RenameNodeResponse);
+  rpc DeleteNode(materials.DeleteNodeRequest) returns (materials.DeleteNodeResponse);
+  
+  // Coach
+  rpc Ask(coach.AskRequest) returns (coach.AskResponse);
+  rpc ParseResume(coach.ParseResumeRequest) returns (coach.ParseResumeResponse);
+  rpc AnswerResume(coach.AnswerResumeRequest) returns (coach.AnswerResumeResponse);
+  rpc GetResumeSession(coach.GetResumeSessionRequest) returns (coach.GetResumeSessionResponse);
+  
+  // Jobs
+  rpc SearchJobs(jobs.SearchJobsRequest) returns (jobs.SearchJobsResponse);
+  rpc AddFavorite(jobs.AddFavoriteRequest) returns (jobs.AddFavoriteResponse);
+  rpc RemoveFavorite(jobs.RemoveFavoriteRequest) returns (jobs.RemoveFavoriteResponse);
+  rpc ListFavorites(jobs.ListFavoritesRequest) returns (jobs.ListFavoritesResponse);
+  
+  // Calendar
+  rpc CreateEvent(calendar.CreateEventRequest) returns (calendar.CreateEventResponse);
+  rpc GetEvent(calendar.GetEventRequest) returns (calendar.GetEventResponse);
+  rpc UpdateEvent(calendar.UpdateEventRequest) returns (calendar.UpdateEventResponse);
+  rpc DeleteEvent(calendar.DeleteEventRequest) returns (calendar.DeleteEventResponse);
+  rpc ListEvents(calendar.ListEventsRequest) returns (calendar.ListEventsResponse);
+  rpc ListUpcoming(calendar.ListUpcomingRequest) returns (calendar.ListUpcomingResponse);
+}

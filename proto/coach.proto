@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package coach;
+
+option go_package = "proto/coach";
+
+import "common.proto";
+import "user.proto";
+
+message AskRequest {
+  optional string conversation_id = 1;
+  string question = 2;
+  optional user.ResumeProfile resume_profile = 3;
+  repeated ContextChunk context_chunks = 4;
+}
+
+message ContextChunk {
+  string source = 1;
+  string title = 2;
+  string content = 3;
+}
+
+message AskResponse {
+  string conversation_id = 1;
+  string answer = 2;
+}
+
+message ParseResumeRequest {
+  string material_id = 1;
+}
+
+message ResumeProfileDraft {
+  repeated string target_roles = 1;
+  repeated ProfessionalRoleCandidate professional_role_candidates = 2;
+  optional string experience_level = 3;
+  repeated Area areas = 4;
+  optional double salary_min = 5;
+  optional string currency = 6;
+  repeated string work_format = 7;
+  repeated string skills_top = 8;
+  optional string notes = 9;
+  map<string, double> confidence = 10;
+}
+
+message ProfessionalRoleCandidate {
+  string id = 1;
+  string name = 2;
+  double confidence = 3;
+}
+
+message Area {
+  string id = 1;
+  string name = 2;
+  double confidence = 3;
+}
+
+message Question {
+  string id = 1;
+  string text = 2;
+  string type = 3;
+  repeated string options = 4;
+}
+
+message ParseResumeResponse {
+  string session_id = 1; // UUID, generated when session is created
+  ResumeProfileDraft draft = 2;
+  repeated Question questions = 3;
+  string status = 4;
+}
+
+message QuestionAnswer {
+  string question_id = 1;
+  string value = 2;
+}
+
+message AnswerResumeRequest {
+  string session_id = 1;
+  repeated QuestionAnswer answers = 2;
+}
+
+message AnswerResumeResponse {
+  string session_id = 1;
+  ResumeProfileDraft draft = 2;
+  repeated Question questions = 3;
+  string status = 4;
+}
+
+message GetResumeSessionRequest {
+  string session_id = 1; // UUID of the resume parse session
+}
+
+message GetResumeSessionResponse {
+  string session_id = 1;
+  ResumeProfileDraft draft = 2;
+  repeated Question questions = 3;
+  string status = 4;
+}
+
+message DeleteUserDataRequest {
+  uint32 user_id = 1;
+}
+
+message DeleteUserDataResponse {
+  bool ok = 1;
+}
+
+service CoachService {
+  rpc Ask(AskRequest) returns (AskResponse);
+  rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse);
+  rpc AnswerResume(AnswerResumeRequest) returns (AnswerResumeResponse);
+  rpc GetResumeSession(GetResumeSessionRequest) returns (GetResumeSessionResponse);
+  rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
+}

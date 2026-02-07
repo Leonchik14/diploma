@@ -1,0 +1,9 @@
+.git
+.gitignore
+README.md
+.env
+.env.*
+*.log
+coverage.out
+materials-service
+.DS_Store

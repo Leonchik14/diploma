@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package calendar;
+
+option go_package = "proto/calendar";
+
+import "google/protobuf/timestamp.proto";
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  INTERVIEW = 1;   // Собеседование
+  CALL = 2;        // Звонок
+  MEETING = 3;     // Встреча
+  TEST_TASK = 4;   // Тестовое задание
+  PREP = 5;
+  DEADLINE = 6;
+  OTHER = 7;
+}
+
+enum SortOrder {
+  SORT_START_ASC = 0;
+  SORT_START_DESC = 1;
+}
+
+message Event {
+  string id = 1;
+  string title = 2;
+  optional string description = 3;
+  EventType event_type = 4;
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+  optional string timezone = 7;
+  optional string location = 8;
+  optional string related_vacancy_id = 9;
+  bool reminder_enabled = 10;
+  int32 reminder_minutes = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message EventPatch {
+  optional string title = 1;
+  optional string description = 2;
+  optional EventType event_type = 3;
+  optional google.protobuf.Timestamp start_time = 4;
+  optional google.protobuf.Timestamp end_time = 5;
+  optional string timezone = 6;
+  optional string location = 7;
+  optional string related_vacancy_id = 8;
+  optional bool reminder_enabled = 9;
+  optional int32 reminder_minutes = 10;
+}
+
+message CreateEventRequest {
+  Event event = 1;
+}
+
+message CreateEventResponse {
+  Event event = 1;
+}
+
+message GetEventRequest {
+  string id = 1;
+}
+
+message GetEventResponse {
+  Event event = 1;
+}
+
+message UpdateEventRequest {
+  string id = 1;
+  EventPatch patch = 2;
+}
+
+message UpdateEventResponse {
+  Event event = 1;
+}
+
+message DeleteEventRequest {
+  string id = 1;
+}
+
+message DeleteEventResponse {
+  bool success = 1;
+}
+
+message ListEventsRequest {
+  google.protobuf.Timestamp from_time = 1;
+  google.protobuf.Timestamp to_time = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+  SortOrder sort = 5;
+}
+
+message ListEventsResponse {
+  repeated Event events = 1;
+  string next_page_token = 2;
+}
+
+message ListUpcomingRequest {
+  int32 limit = 1;
+  optional google.protobuf.Timestamp from_time = 2;
+}
+
+message ListUpcomingResponse {
+  repeated Event events = 1;
+}
+
+message DeleteUserDataRequest {
+  uint32 user_id = 1;
+}
+
+message DeleteUserDataResponse {
+  bool ok = 1;
+}
+
+service CalendarService {
+  rpc CreateEvent(CreateEventRequest) returns (CreateEventResponse);
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+  rpc UpdateEvent(UpdateEventRequest) returns (UpdateEventResponse);
+  rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  rpc ListUpcoming(ListUpcomingRequest) returns (ListUpcomingResponse);
+  rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
+}

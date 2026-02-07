@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "proto/user";
+
+enum ResumeProfileStatus {
+  RESUME_PROFILE_STATUS_UNSPECIFIED = 0;
+  DRAFT = 1;
+  CONFIRMED = 2;
+}
+
+message GetMeRequest {}
+
+message GetMeResponse {
+  UserProfile user = 1;
+}
+
+message UserProfile {
+  uint32 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string email = 4;
+  string username = 5;
+  bool resume_uploaded = 6;
+  int32 total_interviews = 7;
+  int32 completed_interviews = 8;
+  int32 upcoming_interviews = 9;
+  bool notifications_enabled = 10;
+}
+
+message ResumeProfile {
+  repeated string target_roles = 1;
+  optional string experience_level = 2;
+  repeated Area areas = 3;
+  optional double salary_min = 4;
+  optional string currency = 5;
+  repeated string work_format = 6;
+  repeated string skills_top = 7;
+  optional string education_level = 8;
+  optional string notes = 9;
+}
+
+message ResumeProfilePatch {
+  repeated string target_roles = 1;
+  optional string experience_level = 2;
+  repeated Area areas = 3;
+  optional double salary_min = 4;
+  optional string currency = 5;
+  repeated string work_format = 6;
+  repeated string skills_top = 7;
+  optional string education_level = 8;
+  optional string notes = 9;
+}
+
+message Area {
+  string id = 1;
+  string name = 2;
+}
+
+message GetResumeProfileRequest {}
+
+message GetResumeProfileResponse {
+  ResumeProfile profile = 1;
+  ResumeProfileStatus status = 2;
+  int64 version = 3;
+  optional string source_material_id = 4;
+  map<string, bool> confirmed_fields = 5;
+  map<string, double> confidence = 6;
+}
+
+message GetResumeProfileInternalRequest {
+  uint32 user_id = 1;
+}
+
+message GetResumeProfileInternalResponse {
+  ResumeProfile profile = 1;
+  ResumeProfileStatus status = 2;
+  int64 version = 3;
+  optional string source_material_id = 4;
+  map<string, bool> confirmed_fields = 5;
+  map<string, double> confidence = 6;
+}
+
+message UpsertResumeProfileInternalRequest {
+  uint32 user_id = 1;
+  string source_material_id = 2;
+  ResumeProfile profile = 3;
+  ResumeProfileStatus status = 4;
+  map<string, bool> confirmed_fields = 5;
+  map<string, double> confidence = 6;
+}
+
+message UpsertResumeProfileInternalResponse {
+  int64 version = 1;
+}
+
+message PatchResumeProfileInternalRequest {
+  uint32 user_id = 1;
+  ResumeProfilePatch patch = 2;
+  map<string, bool> set_confirmed_fields = 3;
+  map<string, double> set_confidence = 4;
+  optional ResumeProfileStatus status = 5;
+}
+
+message PatchResumeProfileInternalResponse {
+  int64 version = 1;
+}
+
+message UpdateResumeProfileRequest {
+  uint32 user_id = 1;
+  ResumeProfile profile = 2;
+}
+
+message UpdateResumeProfileResponse {
+  bool success = 1;
+}
+
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {
+  bool ok = 1;
+}
+
+message VerifyPasswordResetCodeRequest {
+  string email = 1;
+  string code = 2;
+}
+
+message VerifyPasswordResetCodeResponse {
+  bool valid = 1;
+}
+
+message ResetPasswordRequest {
+  string email = 1;
+  string code = 2;
+  string new_password = 3;
+}
+
+message ResetPasswordResponse {
+  bool ok = 1;
+}
+
+message DeleteAccountRequest {
+  string password = 1;
+}
+
+message DeleteAccountResponse {
+  bool deleted = 1;
+}
+
+message UpdateUserProfileRequest {
+  optional string first_name = 1;
+  optional string last_name = 2;
+  optional string email = 3;
+  optional bool notifications_enabled = 4;
+}
+
+message UpdateUserProfileResponse {
+  bool success = 1;
+}
+
+service UserService {
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+  rpc GetResumeProfile(GetResumeProfileRequest) returns (GetResumeProfileResponse);
+  rpc GetResumeProfileInternal(GetResumeProfileInternalRequest) returns (GetResumeProfileInternalResponse);
+  rpc UpsertResumeProfileInternal(UpsertResumeProfileInternalRequest) returns (UpsertResumeProfileInternalResponse);
+  rpc PatchResumeProfileInternal(PatchResumeProfileInternalRequest) returns (PatchResumeProfileInternalResponse);
+  rpc UpdateResumeProfile(UpdateResumeProfileRequest) returns (UpdateResumeProfileResponse);
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UpdateUserProfileResponse);
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+  rpc VerifyPasswordResetCode(VerifyPasswordResetCodeRequest) returns (VerifyPasswordResetCodeResponse);
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+  rpc DeleteAccount(DeleteAccountRequest) returns (DeleteAccountResponse);
+}

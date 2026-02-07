@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package jobs;
+
+option go_package = "proto/jobs";
+
+import "common.proto";
+
+message SearchJobsRequest {
+  int32 page = 1;     // default 0, min 0
+  int32 per_page = 2; // default 10, min 1, max 100
+}
+
+message Vacancy {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  optional Salary salary = 4;
+  Employer employer = 5;
+  Area area = 6;
+  string alternate_url = 7;
+  optional string experience = 8;
+  bool is_favorite = 9;
+  bool archived = 10;
+}
+
+message Salary {
+  optional int32 from = 1;
+  optional int32 to = 2;
+  string currency = 3;
+}
+
+message Employer {
+  string name = 1;
+  optional string logo_url = 2;
+}
+
+message Area {
+  string name = 1;
+}
+
+message SearchJobsResponse {
+  repeated Vacancy items = 1;
+  int32 found = 2;
+  int32 page = 3;
+  int32 pages = 4;
+  int32 per_page = 5;
+}
+
+message AddFavoriteRequest {
+  string vacancy_id = 1;
+}
+
+message AddFavoriteResponse {
+  bool success = 1;
+}
+
+message RemoveFavoriteRequest {
+  string vacancy_id = 1;
+}
+
+message RemoveFavoriteResponse {
+  bool success = 1;
+}
+
+message ListFavoritesRequest {}
+
+message ListFavoritesResponse {
+  repeated Vacancy vacancies = 1;
+}
+
+message DeleteUserDataRequest {
+  uint32 user_id = 1;
+}
+
+message DeleteUserDataResponse {
+  bool ok = 1;
+}
+
+service JobsService {
+  rpc SearchJobs(SearchJobsRequest) returns (SearchJobsResponse);
+  rpc AddFavorite(AddFavoriteRequest) returns (AddFavoriteResponse);
+  rpc RemoveFavorite(RemoveFavoriteRequest) returns (RemoveFavoriteResponse);
+  rpc ListFavorites(ListFavoritesRequest) returns (ListFavoritesResponse);
+  rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
+}
