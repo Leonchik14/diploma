@@ -161,12 +161,14 @@ services:
       PARSE_MODEL: ${PARSE_MODEL:-meta-llama/llama-3.3-70b-instruct}
       COACH_MODEL: ${COACH_MODEL:-meta-llama/llama-3.3-70b-instruct}
       GRPC_PORT: ${GRPC_PORT:-9093}
-      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-30000}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-120000}
       MAX_RESUME_CHARS: ${MAX_RESUME_CHARS:-50000}
       CHAT_HISTORY_LIMIT: ${CHAT_HISTORY_LIMIT:-20}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
       MATERIALS_SERVICE_URL: ${MATERIALS_SERVICE_URL:-materials-service:9092}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-user-service:9091}
+      USER_SERVICE_GRPC: ${USER_SERVICE_GRPC:-user-service:9091}
+      JOBS_SERVICE_URL: ${JOBS_SERVICE_URL:-job-service:9094}
     ports:
       - "9093:9093"
     depends_on:
@@ -175,6 +177,8 @@ services:
       materials-service:
         condition: service_healthy
       user-service:
+        condition: service_healthy
+      job-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9093 || exit 1"]
@@ -190,6 +194,7 @@ services:
     container_name: job-service
     environment:
       GRPC_PORT: ${GRPC_PORT:-9094}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:dev-only-change-in-production@postgres:5432/diploma?sslmode=disable}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-user-service:9091}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
       HH_APP_TOKEN: ${HH_APP_TOKEN}
@@ -198,6 +203,8 @@ services:
     ports:
       - "9094:9094"
     depends_on:
+      postgres:
+        condition: service_healthy
       user-service:
         condition: service_healthy
     healthcheck:

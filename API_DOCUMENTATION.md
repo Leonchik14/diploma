@@ -170,6 +170,8 @@
 | `ParseResume` | Парсинг резюме по material_id, создание сессии |
 | `AnswerResume` | Ответы на уточняющие вопросы по резюме |
 | `GetResumeSession` | Получение сессии парсинга резюме |
+| `PrepareForVacancy` | Рекомендации по подготовке к вакансии (по ID с HH) |
+| `ReviewResume` | Оценка резюме + рекомендации по улучшению |
 
 ### Ask
 
@@ -193,6 +195,18 @@
 - **Request:** `GetResumeSessionRequest` — `session_id`.
 - **Response:** `GetResumeSessionResponse` — `session_id`, `draft`, `questions[]`, `status`.
 
+### PrepareForVacancy
+
+- **Request:** `PrepareForVacancyRequest` — `vacancy_id` (ID вакансии с hh.ru).
+- **Response:** `PrepareForVacancyResponse` — `recommendations` (текст рекомендаций по подготовке к собеседованию).
+- Сервис загружает вакансию с HH API, отправляет в LLM и возвращает рекомендации.
+
+### ReviewResume
+
+- **Request:** `ReviewResumeRequest` — пустой (используется профиль текущего пользователя).
+- **Response:** `ReviewResumeResponse` — `score` (0–10), `recommendations` (текст с оценкой и рекомендациями по улучшению).
+- Анализирует текущее резюме пользователя (ResumeProfile) и даёт оценку с советами.
+
 ---
 
 ## 5. Jobs (вакансии и избранное)
@@ -202,6 +216,7 @@
 | RPC | Описание |
 |-----|----------|
 | `SearchJobs` | Поиск вакансий (HH) |
+| `GetVacancy` | Получить вакансию по ID (для внутренних вызовов) |
 | `AddFavorite` | Добавить в избранное |
 | `RemoveFavorite` | Убрать из избранного |
 | `ListFavorites` | Список избранных вакансий |

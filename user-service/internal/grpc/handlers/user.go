@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"user-service/internal/clients"
 	"user-service/internal/config"
 	"user-service/internal/database"
 	"user-service/internal/email"
@@ -28,6 +29,7 @@ type UserHandler struct {
 	passwordResetSvc   *service.PasswordResetService
 	accountDeletionSvc *service.AccountDeletionService
 	resumeRepo         *postgres.ResumeProfileRepo
+	materialsClient    *clients.MaterialsClient
 }
 
 func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
@@ -38,6 +40,7 @@ func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
 	passwordResetSvc := service.NewPasswordResetService(cfg, sender)
 	accountDeletionSvc := service.NewAccountDeletionService(cfg, logger)
 	resumeRepo := postgres.NewResumeProfileRepo()
+	materialsClient := clients.NewMaterialsClient(cfg.MaterialsServiceAddr, cfg.InternalAPIKey, logger)
 
 	return &UserHandler{
 		cfg:                cfg,
@@ -45,6 +48,7 @@ func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
 		passwordResetSvc:   passwordResetSvc,
 		accountDeletionSvc: accountDeletionSvc,
 		resumeRepo:         resumeRepo,
+		materialsClient:    materialsClient,
 	}
 }
 
@@ -86,6 +90,110 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 			UpcomingInterviews:   0,
 			NotificationsEnabled: notificationsEnabled,
 		},
+	}, nil
+}
+
+func (h *UserHandler) UploadProfilePhoto(ctx context.Context, req *pbuser.UploadProfilePhotoRequest) (*pbuser.UploadProfilePhotoResponse, error) {
+	userID, ok := requestctx.UserID(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
+	}
+	if len(req.FileContent) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "file_content is required")
+	}
+	// Простая защита от слишком больших файлов (например, >5 МБ)
+	if len(req.FileContent) > 5*1024*1024 {
+		return nil, status.Errorf(codes.InvalidArgument, "file too large")
+	}
+	if h.materialsClient == nil {
+		return nil, status.Errorf(codes.Internal, "materials client not configured")
+	}
+
+	filename := strings.TrimSpace(req.Filename)
+	if filename == "" {
+		filename = "profile_photo"
+	}
+
+	materialID, err := h.materialsClient.UploadUserProfilePhoto(ctx, uint(userID), req.FileContent, filename, req.MimeType)
+	if err != nil {
+		h.logger.Error("failed to upload profile photo to materials-service", "user_id", userID, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to upload profile photo")
+	}
+
+	_, err = database.DB.Exec(ctx,
+		"UPDATE users SET profile_photo_material_id = $1, updated_at = NOW() WHERE id = $2",
+		materialID, userID)
+	if err != nil {
+		h.logger.Error("failed to save profile photo material id", "user_id", userID, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to save profile photo")
+	}
+
+	return &pbuser.UploadProfilePhotoResponse{Ok: true}, nil
+}
+
+func (h *UserHandler) GetProfilePhoto(ctx context.Context, req *pbuser.GetProfilePhotoRequest) (*pbuser.GetProfilePhotoResponse, error) {
+	userID, ok := requestctx.UserID(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
+	}
+	if h.materialsClient == nil {
+		return nil, status.Errorf(codes.Internal, "materials client not configured")
+	}
+
+	var materialID sql.NullString
+	err := database.DB.QueryRow(ctx,
+		"SELECT profile_photo_material_id FROM users WHERE id = $1",
+		userID).Scan(&materialID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, status.Errorf(codes.NotFound, "user not found")
+		}
+		return nil, status.Errorf(codes.Internal, "database error")
+	}
+	if !materialID.Valid || strings.TrimSpace(materialID.String) == "" {
+		return nil, status.Errorf(codes.NotFound, "profile photo not set")
+	}
+
+	resp, err := h.materialsClient.DownloadFile(ctx, materialID.String, uint(userID))
+	if err != nil {
+		h.logger.Error("failed to download profile photo from materials-service", "user_id", userID, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to load profile photo")
+	}
+
+	return &pbuser.GetProfilePhotoResponse{
+		Content:  resp.Content,
+		Filename: resp.Filename,
+		MimeType: resp.MimeType,
+	}, nil
+}
+
+func (h *UserHandler) GetResumeFile(ctx context.Context, req *pbuser.GetResumeFileRequest) (*pbuser.GetResumeFileResponse, error) {
+	userID, ok := requestctx.UserID(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
+	}
+	if h.materialsClient == nil {
+		return nil, status.Errorf(codes.Internal, "materials client not configured")
+	}
+
+	row, err := h.resumeRepo.GetByUserID(ctx, uint(userID))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "database error")
+	}
+	if row == nil || row.SourceMaterialID == nil || *row.SourceMaterialID == "" {
+		return nil, status.Errorf(codes.NotFound, "resume file not found")
+	}
+
+	resp, err := h.materialsClient.DownloadFile(ctx, *row.SourceMaterialID, uint(userID))
+	if err != nil {
+		h.logger.Error("failed to download resume file from materials-service", "user_id", userID, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to load resume file")
+	}
+
+	return &pbuser.GetResumeFileResponse{
+		Content:  resp.Content,
+		Filename: resp.Filename,
+		MimeType: resp.MimeType,
 	}, nil
 }
 
@@ -305,7 +413,11 @@ func (h *UserHandler) UpdateResumeProfile(ctx context.Context, req *pbuser.Updat
 	if req.Profile == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "profile required")
 	}
-	userID := uint(req.UserId)
+	uid, ok := requestctx.UserID(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
+	}
+	userID := uint(uid)
 	row, _ := h.resumeRepo.GetByUserID(ctx, userID)
 	statusStr := "DRAFT"
 	sourceMaterialID := ""

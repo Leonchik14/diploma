@@ -143,6 +143,32 @@ message ResetPasswordResponse {
   bool ok = 1;
 }
 
+message UploadProfilePhotoRequest {
+  bytes file_content = 1;
+  string filename = 2;
+  string mime_type = 3;
+}
+
+message UploadProfilePhotoResponse {
+  bool ok = 1;
+}
+
+message GetProfilePhotoRequest {}
+
+message GetProfilePhotoResponse {
+  bytes content = 1;
+  string filename = 2;
+  string mime_type = 3;
+}
+
+message GetResumeFileRequest {}
+
+message GetResumeFileResponse {
+  bytes content = 1;
+  string filename = 2;
+  string mime_type = 3;
+}
+
 message DeleteAccountRequest {
   string password = 1;
 }
@@ -170,6 +196,9 @@ service UserService {
   rpc PatchResumeProfileInternal(PatchResumeProfileInternalRequest) returns (PatchResumeProfileInternalResponse);
   rpc UpdateResumeProfile(UpdateResumeProfileRequest) returns (UpdateResumeProfileResponse);
   rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UpdateUserProfileResponse);
+  rpc UploadProfilePhoto(UploadProfilePhotoRequest) returns (UploadProfilePhotoResponse);
+  rpc GetProfilePhoto(GetProfilePhotoRequest) returns (GetProfilePhotoResponse);
+  rpc GetResumeFile(GetResumeFileRequest) returns (GetResumeFileResponse);
   rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
   rpc VerifyPasswordResetCode(VerifyPasswordResetCodeRequest) returns (VerifyPasswordResetCodeResponse);
   rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);

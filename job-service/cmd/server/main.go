@@ -11,9 +11,10 @@ import (
 
 	"job-service/internal/client"
 	"job-service/internal/config"
+	"job-service/internal/database"
 	grpcserver "job-service/internal/grpc"
+	"job-service/internal/repository"
 	"job-service/internal/service"
-
 )
 
 func main() {
@@ -23,10 +24,16 @@ func main() {
 
 	logger.Printf("Starting job-service on gRPC port %s", cfg.GRPCPort)
 
+	if err := database.Connect(cfg.DatabaseURL); err != nil {
+		logger.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer database.Close()
+
 	slogLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	userClient := client.NewUserClient(cfg.UserServiceURL, cfg.InternalAPIKey, 10*time.Second)
 	hhClient := client.NewHHClient(cfg.HHHost, cfg.HHAppToken, cfg.HHUserAgent, 10*time.Second, slogLogger)
-	grpcSvc := service.NewService(userClient, hhClient)
+	favoritesRepo := repository.NewFavoritesRepo()
+	grpcSvc := service.NewService(userClient, hhClient, favoritesRepo)
 	grpcServer := grpcserver.NewServer(cfg, grpcSvc, slogLogger)
 
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)

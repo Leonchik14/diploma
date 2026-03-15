@@ -50,12 +50,13 @@ func main() {
 
 	materialsClient := client.NewMaterialsClient(cfg.MaterialsServiceURL, cfg.InternalAPIKey, cfg.RequestTimeout)
 	userClient := client.NewUserClient(cfg.UserServiceGRPC, cfg.InternalAPIKey, cfg.RequestTimeout)
+	jobsClient := client.NewJobsClient(cfg.JobsServiceURL, cfg.InternalAPIKey, cfg.RequestTimeout)
 
 	parser := parser.NewParser(llmClient, cfg.ParseModel, cfg.MaxResumeChars)
 	extractor := extractor.NewExtractor(cfg.MaxResumeChars)
 	resumeService := service.NewResumeService(parser, repo, extractor, materialsClient, userClient)
 
-	coachService := service.NewCoachService(llmClient, repo, cfg.CoachModel, cfg.ChatHistoryLimit)
+	coachService := service.NewCoachService(llmClient, repo, cfg.CoachModel, cfg.ChatHistoryLimit, jobsClient, userClient)
 
 	grpcServer := grpcserver.NewServer(cfg, coachService, resumeService, logger)
 

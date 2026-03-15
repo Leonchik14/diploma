@@ -21,6 +21,7 @@ type Node struct {
 	ParentID   *uint      `json:"parent_id" db:"parent_id"` // NULL = root
 	Type       NodeType   `json:"type" db:"type"`
 	Name       string     `json:"name" db:"name"`
+	Hidden     bool       `json:"hidden" db:"hidden"`
 	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at" db:"updated_at"`
 	DeletedAt  *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`

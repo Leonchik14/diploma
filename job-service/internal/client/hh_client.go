@@ -16,7 +16,7 @@ import (
 type HHVacancy struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
-	Description string     `json:"description"`
+	Description string     `json:"responsibility"` // TODO: check if this is the correct field
 	Salary      *HHSalary  `json:"salary"`
 	Employer    HHEmployer `json:"employer"`
 	Area        HHArea     `json:"area"`
@@ -136,6 +136,53 @@ func (c *HHClient) SearchVacancies(ctx context.Context, params map[string]string
 	}
 
 	return &hhResp, nil
+}
+
+// GetVacancyByID fetches a single vacancy by ID from HH API.
+func (c *HHClient) GetVacancyByID(ctx context.Context, vacancyID string) (*HHVacancy, error) {
+	if vacancyID == "" {
+		return nil, fmt.Errorf("vacancy_id is required")
+	}
+
+	u := fmt.Sprintf("https://%s/vacancies/%s", c.host, vacancyID)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("HH-User-Agent", c.userAgent)
+	if c.appToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.appToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch vacancy: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read HH response body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("vacancy not found: %s", vacancyID)
+	}
+	if resp.StatusCode != http.StatusOK {
+		bodyStr := string(body)
+		if len(bodyStr) > 500 {
+			bodyStr = bodyStr[:500] + "..."
+		}
+		return nil, fmt.Errorf("hh.ru returned %d: %s", resp.StatusCode, bodyStr)
+	}
+
+	var v HHVacancy
+	if err := json.Unmarshal(body, &v); err != nil {
+		return nil, fmt.Errorf("failed to decode vacancy: %w", err)
+	}
+	return &v, nil
 }
 
 // professional_role=96 — "Программист, разработчик" в справочнике HH (как в рабочем примере).

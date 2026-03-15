@@ -24,6 +24,7 @@ type Config struct {
 	MaterialsServiceURL string
 	UserServiceURL      string
 	UserServiceGRPC     string
+	JobsServiceURL      string
 }
 
 func LoadConfig() *Config {
@@ -42,13 +43,14 @@ func LoadConfig() *Config {
 		MaterialsServiceURL: getEnv("MATERIALS_SERVICE_URL", "materials-service:9092"),
 		UserServiceURL:      getEnv("USER_SERVICE_URL", "http://user-service:8080"),
 		UserServiceGRPC:     getEnv("USER_SERVICE_GRPC", "user-service:9091"),
+		JobsServiceURL:      getEnv("JOBS_SERVICE_URL", "job-service:9094"),
 	}
 
-	timeoutMs := getEnv("REQUEST_TIMEOUT_MS", "30000")
+	timeoutMs := getEnv("REQUEST_TIMEOUT_MS", "120000")
 	if ms, err := strconv.Atoi(timeoutMs); err == nil {
 		cfg.RequestTimeout = time.Duration(ms) * time.Millisecond
 	} else {
-		cfg.RequestTimeout = 30 * time.Second
+		cfg.RequestTimeout = 120 * time.Second
 	}
 
 	maxChars := getEnv("MAX_RESUME_CHARS", "50000")

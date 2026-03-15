@@ -25,6 +25,9 @@ service BackendGateway {
   rpc GetResumeProfile(user.GetResumeProfileRequest) returns (user.GetResumeProfileResponse);
   rpc UpdateResumeProfile(user.UpdateResumeProfileRequest) returns (user.UpdateResumeProfileResponse);
   rpc UpdateUserProfile(user.UpdateUserProfileRequest) returns (user.UpdateUserProfileResponse);
+  rpc UploadProfilePhoto(user.UploadProfilePhotoRequest) returns (user.UploadProfilePhotoResponse);
+  rpc GetProfilePhoto(user.GetProfilePhotoRequest) returns (user.GetProfilePhotoResponse);
+  rpc GetResumeFile(user.GetResumeFileRequest) returns (user.GetResumeFileResponse);
   rpc DeleteAccount(user.DeleteAccountRequest) returns (user.DeleteAccountResponse);
   
   // Materials
@@ -38,9 +41,12 @@ service BackendGateway {
   
   // Coach
   rpc Ask(coach.AskRequest) returns (coach.AskResponse);
-  rpc ParseResume(coach.ParseResumeRequest) returns (coach.ParseResumeResponse);
+  rpc ParseResume(coach.ParseResumeRequest) returns (coach.ParseResumeResponse); // TODO: delete
+  rpc UploadAndParseResume(coach.UploadAndParseResumeRequest) returns (coach.UploadAndParseResumeResponse);
   rpc AnswerResume(coach.AnswerResumeRequest) returns (coach.AnswerResumeResponse);
   rpc GetResumeSession(coach.GetResumeSessionRequest) returns (coach.GetResumeSessionResponse);
+  rpc PrepareForVacancy(coach.PrepareForVacancyRequest) returns (coach.PrepareForVacancyResponse);
+  rpc ReviewResume(coach.ReviewResumeRequest) returns (coach.ReviewResumeResponse);
   
   // Jobs
   rpc SearchJobs(jobs.SearchJobsRequest) returns (jobs.SearchJobsResponse);

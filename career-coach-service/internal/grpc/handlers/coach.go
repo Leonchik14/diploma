@@ -113,6 +113,33 @@ func (h *CoachHandler) ParseResume(ctx context.Context, req *pbcoach.ParseResume
 	return convertResumeParseResponse(resp), nil
 }
 
+func (h *CoachHandler) UploadAndParseResume(ctx context.Context, req *pbcoach.UploadAndParseResumeRequest) (*pbcoach.UploadAndParseResumeResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.FileContent) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "file_content is required")
+	}
+	if req.Filename == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "filename is required")
+	}
+
+	resp, err := h.resumeService.UploadAndParseResume(ctx, userID, req.FileContent, req.Filename)
+	if err != nil {
+		h.logger.Error("failed to upload and parse resume", "error", err, "user_id", userID)
+		return nil, status.Errorf(codes.Internal, "failed to upload and parse resume: %v", err)
+	}
+
+	return &pbcoach.UploadAndParseResumeResponse{
+		SessionId: resp.SessionID,
+		Draft:     convertResumeProfileDraft(resp.Draft),
+		Questions: convertQuestions(resp.Questions),
+		Status:    resp.Status,
+	}, nil
+}
+
 func (h *CoachHandler) AnswerResume(ctx context.Context, req *pbcoach.AnswerResumeRequest) (*pbcoach.AnswerResumeResponse, error) {
 	userID, err := h.getUserID(ctx)
 	if err != nil {
@@ -166,6 +193,44 @@ func (h *CoachHandler) GetResumeSession(ctx context.Context, req *pbcoach.GetRes
 	}
 
 	return convertResumeSessionResponse(resp), nil
+}
+
+func (h *CoachHandler) PrepareForVacancy(ctx context.Context, req *pbcoach.PrepareForVacancyRequest) (*pbcoach.PrepareForVacancyResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req.VacancyId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id is required")
+	}
+
+	recommendations, err := h.coachService.PrepareForVacancy(ctx, userID, req.VacancyId)
+	if err != nil {
+		h.logger.Error("failed to prepare for vacancy", "error", err, "user_id", userID, "vacancy_id", req.VacancyId)
+		return nil, status.Errorf(codes.Internal, "failed to get recommendations: %v", err)
+	}
+
+	return &pbcoach.PrepareForVacancyResponse{
+		Recommendations: recommendations,
+	}, nil
+}
+
+func (h *CoachHandler) ReviewResume(ctx context.Context, req *pbcoach.ReviewResumeRequest) (*pbcoach.ReviewResumeResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	score, recommendations, err := h.coachService.ReviewResume(ctx, userID)
+	if err != nil {
+		h.logger.Error("failed to review resume", "error", err, "user_id", userID)
+		return nil, status.Errorf(codes.Internal, "failed to review resume: %v", err)
+	}
+
+	return &pbcoach.ReviewResumeResponse{
+		Score:          score,
+		Recommendations: recommendations,
+	}, nil
 }
 
 func (h *CoachHandler) DeleteUserData(ctx context.Context, req *pbcoach.DeleteUserDataRequest) (*pbcoach.DeleteUserDataResponse, error) {

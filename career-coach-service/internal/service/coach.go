@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"strings"
 
+	"career-coach-service/internal/client"
 	"career-coach-service/internal/llm"
 	"career-coach-service/internal/model"
 	"career-coach-service/internal/repository"
+
+	pbjobs "proto/jobs"
+	pbuser "proto/user"
 )
 
 type CoachService struct {
@@ -15,14 +19,18 @@ type CoachService struct {
 	model            string
 	repo             *repository.Repository
 	chatHistoryLimit int
+	jobsClient       *client.JobsClient
+	userClient       *client.UserClient
 }
 
-func NewCoachService(llmClient *llm.Client, repo *repository.Repository, model string, chatHistoryLimit int) *CoachService {
+func NewCoachService(llmClient *llm.Client, repo *repository.Repository, model string, chatHistoryLimit int, jobsClient *client.JobsClient, userClient *client.UserClient) *CoachService {
 	return &CoachService{
 		llmClient:        llmClient,
 		model:            model,
 		repo:             repo,
 		chatHistoryLimit: chatHistoryLimit,
+		jobsClient:       jobsClient,
+		userClient:       userClient,
 	}
 }
 
@@ -77,6 +85,164 @@ func (s *CoachService) Ask(ctx context.Context, userID uint, req *model.AskReque
 
 func (s *CoachService) DeleteUserData(ctx context.Context, userID uint) error {
 	return s.repo.DeleteUserData(ctx, userID)
+}
+
+func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacancyID string) (string, error) {
+	if s.jobsClient == nil {
+		return "", fmt.Errorf("jobs client not configured")
+	}
+
+	vacancy, err := s.jobsClient.GetVacancy(ctx, vacancyID)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch vacancy: %w", err)
+	}
+
+	vacancyText := formatVacancyForLLM(vacancy)
+	systemPrompt := `Ты профессиональный карьерный коуч. На основе описания вакансии с hh.ru дай конкретные рекомендации по подготовке к собеседованию: что изучить, какие вопросы могут задать, на что обратить внимание. Будь практичным и конкретным. Отвечай на русском языке.`
+	userMessage := fmt.Sprintf("Вакансия:\n%s\n\nДай рекомендации по подготовке к собеседованию на эту вакансию.", vacancyText)
+
+	messages := []model.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userMessage},
+	}
+
+	recommendations, err := s.llmClient.ChatCompletion(ctx, s.model, messages)
+	if err != nil {
+		return "", fmt.Errorf("failed to get LLM response: %w", err)
+	}
+	return recommendations, nil
+}
+
+func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score float64, recommendations string, err error) {
+	if s.userClient == nil {
+		return 0, "", fmt.Errorf("user client not configured")
+	}
+
+	resp, err := s.userClient.GetResumeProfileInternal(ctx, userID)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to get resume profile: %w", err)
+	}
+	if resp.Profile == nil {
+		return 0, "", fmt.Errorf("resume profile not found")
+	}
+
+	profileText := formatResumeProfileForLLM(resp.Profile)
+	systemPrompt := `Ты профессиональный HR-эксперт и карьерный консультант. Проанализируй резюме пользователя и:
+1. Поставь оценку от 1 до 10 (целое число или с одним знаком после запятой).
+2. Дай конкретные рекомендации по улучшению резюме: что добавить, что улучшить, какие формулировки изменить.
+
+Формат ответа:
+ОЦЕНКА: X/10
+
+РЕКОМЕНДАЦИИ:
+- пункт 1
+- пункт 2
+...
+
+Отвечай на русском языке.`
+	userMessage := fmt.Sprintf("Резюме пользователя:\n%s\n\nПроанализируй и дай оценку с рекомендациями.", profileText)
+
+	messages := []model.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userMessage},
+	}
+
+	answer, err := s.llmClient.ChatCompletion(ctx, s.model, messages)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to get LLM response: %w", err)
+	}
+
+	score = parseScoreFromLLMResponse(answer)
+	return score, answer, nil
+}
+
+func formatVacancyForLLM(v *pbjobs.Vacancy) string {
+	if v == nil {
+		return ""
+	}
+	var parts []string
+	parts = append(parts, fmt.Sprintf("Название: %s", v.Name))
+	parts = append(parts, fmt.Sprintf("Описание: %s", v.Description))
+	if v.Employer != nil && v.Employer.Name != "" {
+		parts = append(parts, fmt.Sprintf("Работодатель: %s", v.Employer.Name))
+	}
+	if v.Area != nil && v.Area.Name != "" {
+		parts = append(parts, fmt.Sprintf("Регион: %s", v.Area.Name))
+	}
+	if v.Salary != nil {
+		var s string
+		if v.Salary.From != nil && v.Salary.To != nil {
+			s = fmt.Sprintf("%d - %d %s", *v.Salary.From, *v.Salary.To, v.Salary.Currency)
+		} else if v.Salary.From != nil {
+			s = fmt.Sprintf("от %d %s", *v.Salary.From, v.Salary.Currency)
+		} else if v.Salary.To != nil {
+			s = fmt.Sprintf("до %d %s", *v.Salary.To, v.Salary.Currency)
+		} else {
+			s = v.Salary.Currency
+		}
+		if s != "" {
+			parts = append(parts, fmt.Sprintf("Зарплата: %s", s))
+		}
+	}
+	if v.Experience != nil && *v.Experience != "" {
+		parts = append(parts, fmt.Sprintf("Опыт: %s", *v.Experience))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func formatResumeProfileForLLM(p *pbuser.ResumeProfile) string {
+	if p == nil {
+		return ""
+	}
+	var parts []string
+	if len(p.TargetRoles) > 0 {
+		parts = append(parts, fmt.Sprintf("Целевые роли: %s", strings.Join(p.TargetRoles, ", ")))
+	}
+	if p.ExperienceLevel != nil {
+		parts = append(parts, fmt.Sprintf("Уровень опыта: %s", *p.ExperienceLevel))
+	}
+	if len(p.Areas) > 0 {
+		areaNames := make([]string, len(p.Areas))
+		for i, a := range p.Areas {
+			areaNames[i] = a.Name
+		}
+		parts = append(parts, fmt.Sprintf("Регионы: %s", strings.Join(areaNames, ", ")))
+	}
+	if p.SalaryMin != nil {
+		currency := "RUR"
+		if p.Currency != nil {
+			currency = *p.Currency
+		}
+		parts = append(parts, fmt.Sprintf("Желаемая ЗП: %.0f %s", *p.SalaryMin, currency))
+	}
+	if len(p.WorkFormat) > 0 {
+		parts = append(parts, fmt.Sprintf("Формат работы: %s", strings.Join(p.WorkFormat, ", ")))
+	}
+	if len(p.SkillsTop) > 0 {
+		parts = append(parts, fmt.Sprintf("Навыки: %s", strings.Join(p.SkillsTop, ", ")))
+	}
+	if p.EducationLevel != nil {
+		parts = append(parts, fmt.Sprintf("Образование: %s", *p.EducationLevel))
+	}
+	if p.Notes != nil {
+		parts = append(parts, fmt.Sprintf("Заметки: %s", *p.Notes))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func parseScoreFromLLMResponse(answer string) float64 {
+	// Simple heuristic: look for "X/10" or "ОЦЕНКА: X"
+	lines := strings.Split(answer, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.ToUpper(line))
+		if strings.Contains(line, "/10") {
+			var score float64
+			if _, err := fmt.Sscanf(line, "%f/10", &score); err == nil && score >= 0 && score <= 10 {
+				return score
+			}
+		}
+	}
+	return 0
 }
 
 func (s *CoachService) buildSystemPrompt() string {

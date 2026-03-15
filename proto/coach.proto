@@ -25,8 +25,21 @@ message AskResponse {
   string answer = 2;
 }
 
+// TODO: delete — replaced by UploadAndParseResume
 message ParseResumeRequest {
   string material_id = 1;
+}
+
+message UploadAndParseResumeRequest {
+  bytes file_content = 1;
+  string filename = 2;
+}
+
+message UploadAndParseResumeResponse {
+  string session_id = 1;
+  ResumeProfileDraft draft = 2;
+  repeated Question questions = 3;
+  string status = 4;
 }
 
 message ResumeProfileDraft {
@@ -96,6 +109,23 @@ message GetResumeSessionResponse {
   string status = 4;
 }
 
+// Подготовка к вакансии: vacancy_id -> рекомендации по подготовке
+message PrepareForVacancyRequest {
+  string vacancy_id = 1;
+}
+
+message PrepareForVacancyResponse {
+  string recommendations = 1;
+}
+
+// Анализ резюме: оценка + рекомендации по улучшению
+message ReviewResumeRequest {}
+
+message ReviewResumeResponse {
+  double score = 1;           // 0-10
+  string recommendations = 2;
+}
+
 message DeleteUserDataRequest {
   uint32 user_id = 1;
 }
@@ -106,8 +136,11 @@ message DeleteUserDataResponse {
 
 service CoachService {
   rpc Ask(AskRequest) returns (AskResponse);
-  rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse);
+  rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse); // TODO: delete
+  rpc UploadAndParseResume(UploadAndParseResumeRequest) returns (UploadAndParseResumeResponse);
   rpc AnswerResume(AnswerResumeRequest) returns (AnswerResumeResponse);
   rpc GetResumeSession(GetResumeSessionRequest) returns (GetResumeSessionResponse);
+  rpc PrepareForVacancy(PrepareForVacancyRequest) returns (PrepareForVacancyResponse);
+  rpc ReviewResume(ReviewResumeRequest) returns (ReviewResumeResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

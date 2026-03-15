@@ -10,6 +10,7 @@ import (
 type Config struct {
 	HTTPPort        string
 	GRPCPort        string
+	DatabaseURL     string
 	UserServiceURL  string
 	InternalAPIKey  string
 	HHAppToken      string
@@ -25,6 +26,7 @@ func LoadConfig() *Config {
 	return &Config{
 		HTTPPort:       getEnv("HTTP_PORT", "8083"),
 		GRPCPort:       getEnv("GRPC_PORT", "50054"),
+		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:CHANGE_ME@localhost:5432/diploma?sslmode=disable"),
 		UserServiceURL: getEnv("USER_SERVICE_URL", "user-service:9091"),
 		InternalAPIKey: getEnv("INTERNAL_API_KEY", ""),
 		HHAppToken:     getEnv("HH_APP_TOKEN", ""),

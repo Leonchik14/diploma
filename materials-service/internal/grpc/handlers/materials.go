@@ -63,12 +63,10 @@ func (h *MaterialsHandler) UploadFile(ctx context.Context, req *pbmaterials.Uplo
 		name = *req.Name
 	}
 
-	// Detect MIME type from filename
 	mimeType := detectMimeType(req.Filename)
 
-	// Create file
 	fileReader := bytes.NewReader(req.FileContent)
-	node, err := h.service.CreateFile(ctx, userID, parentID, name, fileReader, int64(len(req.FileContent)), mimeType)
+	node, err := h.service.CreateFile(ctx, userID, parentID, name, fileReader, int64(len(req.FileContent)), mimeType, req.Hidden)
 	if err != nil {
 		h.logger.Error("failed to create file", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to upload file: %v", err)

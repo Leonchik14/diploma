@@ -55,6 +55,7 @@ RUN apk --no-cache add ca-certificates curl netcat-openbsd
 WORKDIR /app
 
 COPY --from=builder /app/job-service .
+COPY job-service/migrations ./migrations
 
 EXPOSE 8083
 

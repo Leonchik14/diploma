@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"career-coach-service/internal/client"
 	"career-coach-service/internal/extractor"
@@ -82,6 +84,73 @@ func (s *ResumeService) ParseResume(ctx context.Context, userID uint, materialID
 		Questions: questions,
 		Status:    "awaiting_user",
 	}, nil
+}
+
+func (s *ResumeService) UploadAndParseResume(ctx context.Context, userID uint, fileContent []byte, filename string) (*model.ResumeParseResponse, error) {
+	materialID, err := s.materialsClient.UploadFile(ctx, fileContent, filename, userID, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload resume file: %w", err)
+	}
+
+	mimeType := detectMimeType(filename)
+	text, err := s.extractor.ExtractText(ctx, bytes.NewReader(fileContent), mimeType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract text: %w", err)
+	}
+
+	draft, questions, err := s.parser.ParseResume(ctx, text)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse resume: %w", err)
+	}
+
+	if draft.Confidence == nil {
+		draft.Confidence = make(map[string]float64)
+	}
+
+	confirmedFields := make(map[string]bool)
+	confidenceMap := make(map[string]float64)
+	for k, v := range draft.Confidence {
+		confidenceMap[k] = v
+		if v >= confidenceThreshold {
+			confirmedFields[k] = true
+		}
+	}
+
+	pbProfile := draftToProtoProfile(draft)
+	version, err := s.userClient.UpsertResumeProfileInternal(ctx, userID, materialID, pbProfile, pbuser.ResumeProfileStatus_DRAFT, confirmedFields, confidenceMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save profile: %w", err)
+	}
+
+	sessionID, err := s.repo.CreateResumeSession(ctx, userID, materialID, version, questions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return &model.ResumeParseResponse{
+		SessionID: sessionID,
+		Draft:     draft,
+		Questions: questions,
+		Status:    "awaiting_user",
+	}, nil
+}
+
+func detectMimeType(filename string) string {
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".pdf"):
+		return "application/pdf"
+	case strings.HasSuffix(lower, ".docx"):
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case strings.HasSuffix(lower, ".doc"):
+		return "application/msword"
+	case strings.HasSuffix(lower, ".txt"):
+		return "text/plain"
+	case strings.HasSuffix(lower, ".rtf"):
+		return "application/rtf"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func (s *ResumeService) AnswerQuestions(ctx context.Context, userID uint, req *model.ResumeAnswerRequest) (*model.ResumeAnswerResponse, error) {

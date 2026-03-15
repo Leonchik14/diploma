@@ -33,6 +33,25 @@ func NewMaterialsClient(grpcAddr, internalKey string, timeout time.Duration) *Ma
 	}
 }
 
+func (c *MaterialsClient) UploadFile(ctx context.Context, fileContent []byte, filename string, userID uint, hidden bool) (string, error) {
+	md := metadata.New(map[string]string{
+		"x-internal-api-key": c.internalKey,
+		"x-user-id":          fmt.Sprintf("%d", userID),
+	})
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	resp, err := c.client.UploadFile(ctx, &pbmaterials.UploadFileRequest{
+		FileContent: fileContent,
+		Filename:    filename,
+		Hidden:      hidden,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	return resp.MaterialId, nil
+}
+
 func (c *MaterialsClient) DownloadFile(ctx context.Context, materialID string, userID uint) (io.ReadCloser, string, error) {
 	// Add internal API key and user ID to metadata
 	md := metadata.New(map[string]string{

@@ -47,12 +47,11 @@ func (s *Service) CreateFolder(ctx context.Context, userID uint, parentID *uint,
 		return nil, fmt.Errorf("name already exists in this folder")
 	}
 
-	// Create node
-	return s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, name)
+	return s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, name, false)
 }
 
 // CreateFile creates a file node and uploads content to MinIO
-func (s *Service) CreateFile(ctx context.Context, userID uint, parentID *uint, name string, content io.Reader, size int64, mimeType string) (*models.Node, error) {
+func (s *Service) CreateFile(ctx context.Context, userID uint, parentID *uint, name string, content io.Reader, size int64, mimeType string, hidden bool) (*models.Node, error) {
 	// Check if parent exists and belongs to user (if parentID is not nil)
 	if parentID != nil {
 		parent, err := s.repo.GetNodeByID(ctx, userID, *parentID)
@@ -73,13 +72,11 @@ func (s *Service) CreateFile(ctx context.Context, userID uint, parentID *uint, n
 		return nil, fmt.Errorf("name already exists in this folder")
 	}
 
-	// Create node first
-	node, err := s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeFile, name)
+	node, err := s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeFile, name, hidden)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate object key
 	objectKey := s.generateObjectKey(userID, node.ID)
 
 	// Calculate checksum while reading
@@ -125,13 +122,11 @@ func (s *Service) CreateLink(ctx context.Context, userID uint, parentID *uint, n
 		return nil, fmt.Errorf("name already exists in this folder")
 	}
 
-	// Create node
-	node, err := s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeLink, name)
+	node, err := s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeLink, name, false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create link metadata
 	if err := s.repo.CreateLink(ctx, node.ID, url, title, description); err != nil {
 		return nil, fmt.Errorf("failed to create link metadata: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"job-service/internal/auth"
 	"job-service/internal/client"
@@ -18,6 +19,7 @@ import (
 
 type JobsServiceInterface interface {
 	SearchJobs(ctx context.Context, userID string, page, perPage int) (*client.HHResponse, error)
+	GetVacancy(ctx context.Context, vacancyID string) (*client.HHVacancy, error)
 	GetFavoriteIDs(ctx context.Context, userID string) ([]string, error)
 	AddFavorite(ctx context.Context, userID, vacancyID string) error
 	RemoveFavorite(ctx context.Context, userID, vacancyID string) error
@@ -106,6 +108,25 @@ func convertHHResponse(resp *client.HHResponse, favoriteIDs []string, page, perP
 		Pages:   int32(resp.Pages),
 		PerPage: perPage,
 	}
+}
+
+func (h *JobsHandler) GetVacancy(ctx context.Context, req *pbjobs.GetVacancyRequest) (*pbjobs.GetVacancyResponse, error) {
+	if req.VacancyId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id is required")
+	}
+
+	vacancy, err := h.service.GetVacancy(ctx, req.VacancyId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Errorf(codes.NotFound, "vacancy not found: %s", req.VacancyId)
+		}
+		h.logger.Error("failed to get vacancy", "error", err, "vacancy_id", req.VacancyId)
+		return nil, status.Errorf(codes.Internal, "failed to get vacancy: %v", err)
+	}
+
+	return &pbjobs.GetVacancyResponse{
+		Vacancy: convertHHVacancyToProtoWithFavorite(vacancy, false),
+	}, nil
 }
 
 func (h *JobsHandler) AddFavorite(ctx context.Context, req *pbjobs.AddFavoriteRequest) (*pbjobs.AddFavoriteResponse, error) {

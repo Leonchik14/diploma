@@ -21,11 +21,11 @@ func NewRepository() *Repository {
 func (r *Repository) GetNodeByIDWithoutUserCheck(ctx context.Context, nodeID uint) (*models.Node, error) {
 	var node models.Node
 	err := database.DB.QueryRow(ctx,
-		`SELECT id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at
+		`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at
 		 FROM nodes WHERE id = $1 AND deleted_at IS NULL`,
 		nodeID).Scan(
 		&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
-		&node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+		&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -41,11 +41,11 @@ func (r *Repository) GetNodeByIDWithoutUserCheck(ctx context.Context, nodeID uin
 func (r *Repository) GetNodeByID(ctx context.Context, userID, nodeID uint) (*models.Node, error) {
 	var node models.Node
 	err := database.DB.QueryRow(ctx,
-		`SELECT id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at 
+		`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at 
 		 FROM nodes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
 		nodeID, userID).Scan(
 		&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
-		&node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+		&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -61,11 +61,11 @@ func (r *Repository) GetNodeByID(ctx context.Context, userID, nodeID uint) (*mod
 func (r *Repository) GetNodeByMaterialID(ctx context.Context, userID uint, materialID string) (*models.Node, error) {
 	var node models.Node
 	err := database.DB.QueryRow(ctx,
-		`SELECT id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at 
+		`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at 
 		 FROM nodes WHERE material_id = $1 AND user_id = $2 AND deleted_at IS NULL`,
 		materialID, userID).Scan(
 		&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
-		&node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+		&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("node not found")
@@ -75,22 +75,21 @@ func (r *Repository) GetNodeByMaterialID(ctx context.Context, userID uint, mater
 	return &node, nil
 }
 
-// ListChildren retrieves all children of a parent node (for user)
+// ListChildren retrieves all children of a parent node (for user), excluding hidden nodes
 func (r *Repository) ListChildren(ctx context.Context, userID uint, parentID *uint) ([]models.Node, error) {
 	var rows pgx.Rows
 	var err error
 
 	if parentID == nil {
-		// Root level
 		rows, err = database.DB.Query(ctx,
-			`SELECT id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at 
-			 FROM nodes WHERE user_id = $1 AND parent_id IS NULL AND deleted_at IS NULL 
+			`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at 
+			 FROM nodes WHERE user_id = $1 AND parent_id IS NULL AND deleted_at IS NULL AND hidden = FALSE
 			 ORDER BY type, name`,
 			userID)
 	} else {
 		rows, err = database.DB.Query(ctx,
-			`SELECT id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at 
-			 FROM nodes WHERE user_id = $1 AND parent_id = $2 AND deleted_at IS NULL 
+			`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at 
+			 FROM nodes WHERE user_id = $1 AND parent_id = $2 AND deleted_at IS NULL AND hidden = FALSE
 			 ORDER BY type, name`,
 			userID, *parentID)
 	}
@@ -105,7 +104,7 @@ func (r *Repository) ListChildren(ctx context.Context, userID uint, parentID *ui
 		var node models.Node
 		if err := rows.Scan(
 			&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
-			&node.CreatedAt, &node.UpdatedAt, &node.DeletedAt); err != nil {
+			&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, node)
@@ -153,15 +152,15 @@ func (r *Repository) CheckNameExists(ctx context.Context, userID uint, parentID 
 }
 
 // CreateNode creates a new node
-func (r *Repository) CreateNode(ctx context.Context, userID uint, parentID *uint, nodeType models.NodeType, name string) (*models.Node, error) {
+func (r *Repository) CreateNode(ctx context.Context, userID uint, parentID *uint, nodeType models.NodeType, name string, hidden bool) (*models.Node, error) {
 	var node models.Node
 	err := database.DB.QueryRow(ctx,
-		`INSERT INTO nodes (user_id, parent_id, type, name) 
-		 VALUES ($1, $2, $3, $4) 
-		 RETURNING id, material_id, user_id, parent_id, type, name, created_at, updated_at, deleted_at`,
-		userID, parentID, nodeType, name).Scan(
+		`INSERT INTO nodes (user_id, parent_id, type, name, hidden) 
+		 VALUES ($1, $2, $3, $4, $5) 
+		 RETURNING id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at`,
+		userID, parentID, nodeType, name, hidden).Scan(
 		&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
-		&node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+		&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
 
 	if err != nil {
 		return nil, err

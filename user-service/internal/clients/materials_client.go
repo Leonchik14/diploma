@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"google.golang.org/grpc"
@@ -41,4 +42,48 @@ func (c *MaterialsClient) DeleteUserData(ctx context.Context, userID uint) error
 		UserId: uint32(userID),
 	})
 	return err
+}
+
+func (c *MaterialsClient) UploadUserProfilePhoto(ctx context.Context, userID uint, content []byte, filename, mimeType string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("materials client is not initialized")
+	}
+
+	md := metadata.Pairs(
+		"x-internal-api-key", c.internalKey,
+		"x-user-id", fmt.Sprintf("%d", userID),
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	if filename == "" {
+		filename = "profile_photo"
+	}
+
+	req := &pbmaterials.UploadFileRequest{
+		FileContent: content,
+		Filename:    filename,
+		Name:        fmt.Sprintf("user_%d_profile_photo", userID),
+	}
+
+	resp, err := c.client.UploadFile(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return resp.MaterialId, nil
+}
+
+func (c *MaterialsClient) DownloadFile(ctx context.Context, materialID string, userID uint) (*pbmaterials.DownloadFileResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("materials client is not initialized")
+	}
+
+	md := metadata.Pairs(
+		"x-internal-api-key", c.internalKey,
+		"x-user-id", fmt.Sprintf("%d", userID),
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	return c.client.DownloadFile(ctx, &pbmaterials.DownloadFileRequest{
+		MaterialId: materialID,
+	})
 }

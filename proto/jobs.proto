@@ -69,6 +69,14 @@ message ListFavoritesResponse {
   repeated Vacancy vacancies = 1;
 }
 
+message GetVacancyRequest {
+  string vacancy_id = 1;
+}
+
+message GetVacancyResponse {
+  Vacancy vacancy = 1;
+}
+
 message DeleteUserDataRequest {
   uint32 user_id = 1;
 }
@@ -79,6 +87,7 @@ message DeleteUserDataResponse {
 
 service JobsService {
   rpc SearchJobs(SearchJobsRequest) returns (SearchJobsResponse);
+  rpc GetVacancy(GetVacancyRequest) returns (GetVacancyResponse);
   rpc AddFavorite(AddFavoriteRequest) returns (AddFavoriteResponse);
   rpc RemoveFavorite(RemoveFavoriteRequest) returns (RemoveFavoriteResponse);
   rpc ListFavorites(ListFavoritesRequest) returns (ListFavoritesResponse);

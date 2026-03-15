@@ -106,6 +106,18 @@ func (p *GatewayProxy) UpdateUserProfile(ctx context.Context, req *pbuser.Update
 	return p.userClient.UpdateUserProfile(p.forwardMetadata(ctx), req)
 }
 
+func (p *GatewayProxy) UploadProfilePhoto(ctx context.Context, req *pbuser.UploadProfilePhotoRequest) (*pbuser.UploadProfilePhotoResponse, error) {
+	return p.userClient.UploadProfilePhoto(p.forwardMetadata(ctx), req)
+}
+
+func (p *GatewayProxy) GetProfilePhoto(ctx context.Context, req *pbuser.GetProfilePhotoRequest) (*pbuser.GetProfilePhotoResponse, error) {
+	return p.userClient.GetProfilePhoto(p.forwardMetadata(ctx), req)
+}
+
+func (p *GatewayProxy) GetResumeFile(ctx context.Context, req *pbuser.GetResumeFileRequest) (*pbuser.GetResumeFileResponse, error) {
+	return p.userClient.GetResumeFile(p.forwardMetadata(ctx), req)
+}
+
 func (p *GatewayProxy) DeleteAccount(ctx context.Context, req *pbuser.DeleteAccountRequest) (*pbuser.DeleteAccountResponse, error) {
 	return p.userClient.DeleteAccount(p.forwardMetadata(ctx), req)
 }
@@ -148,12 +160,24 @@ func (p *GatewayProxy) ParseResume(ctx context.Context, req *pbcoach.ParseResume
 	return p.coachClient.ParseResume(p.forwardMetadata(ctx), req)
 }
 
+func (p *GatewayProxy) UploadAndParseResume(ctx context.Context, req *pbcoach.UploadAndParseResumeRequest) (*pbcoach.UploadAndParseResumeResponse, error) {
+	return p.coachClient.UploadAndParseResume(p.forwardMetadata(ctx), req)
+}
+
 func (p *GatewayProxy) AnswerResume(ctx context.Context, req *pbcoach.AnswerResumeRequest) (*pbcoach.AnswerResumeResponse, error) {
 	return p.coachClient.AnswerResume(p.forwardMetadata(ctx), req)
 }
 
 func (p *GatewayProxy) GetResumeSession(ctx context.Context, req *pbcoach.GetResumeSessionRequest) (*pbcoach.GetResumeSessionResponse, error) {
 	return p.coachClient.GetResumeSession(p.forwardMetadata(ctx), req)
+}
+
+func (p *GatewayProxy) PrepareForVacancy(ctx context.Context, req *pbcoach.PrepareForVacancyRequest) (*pbcoach.PrepareForVacancyResponse, error) {
+	return p.coachClient.PrepareForVacancy(p.forwardMetadata(ctx), req)
+}
+
+func (p *GatewayProxy) ReviewResume(ctx context.Context, req *pbcoach.ReviewResumeRequest) (*pbcoach.ReviewResumeResponse, error) {
+	return p.coachClient.ReviewResume(p.forwardMetadata(ctx), req)
 }
 
 // Jobs
