@@ -14,15 +14,30 @@ import (
 )
 
 type HHVacancy struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Description string     `json:"responsibility"` // TODO: check if this is the correct field
-	Salary      *HHSalary  `json:"salary"`
-	Employer    HHEmployer `json:"employer"`
-	Area        HHArea     `json:"area"`
-	URL         string     `json:"alternate_url"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Snippet     *HHSnippet   `json:"snippet"`
+	Salary      *HHSalary    `json:"salary"`
+	Employer    HHEmployer   `json:"employer"`
+	Area        HHArea       `json:"area"`
+	URL         string       `json:"alternate_url"`
 	Experience  HHExperience `json:"experience"`
-	Archived    bool       `json:"archived"`
+	Archived    bool         `json:"archived"`
+}
+
+type HHSnippet struct {
+	Requirement    *string `json:"requirement"`
+	Responsibility *string `json:"responsibility"`
+}
+
+// GetDescription returns responsibility from snippet (search results)
+// or description (full vacancy endpoint), whichever is available.
+func (v *HHVacancy) GetDescription() string {
+	if v.Snippet != nil && v.Snippet.Responsibility != nil && *v.Snippet.Responsibility != "" {
+		return *v.Snippet.Responsibility
+	}
+	return v.Description
 }
 
 type HHExperience struct {

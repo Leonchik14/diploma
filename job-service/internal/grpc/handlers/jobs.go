@@ -203,7 +203,7 @@ func convertHHVacancyToProtoWithFavorite(v *client.HHVacancy, isFavorite bool) *
 	pbVacancy := &pbjobs.Vacancy{
 		Id:            v.ID,
 		Name:          v.Name,
-		Description:   v.Description,
+		Description:   v.GetDescription(),
 		AlternateUrl:  v.URL,
 		IsFavorite:    isFavorite,
 		Archived:      v.Archived,
