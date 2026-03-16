@@ -3,6 +3,7 @@ syntax = "proto3";
 package calendar;
 
 option go_package = "proto/calendar";
+option swift_prefix = "Calendar_";
 
 import "google/protobuf/timestamp.proto";
 
@@ -36,6 +37,7 @@ message Event {
   int32 reminder_minutes = 11;
   google.protobuf.Timestamp created_at = 12;
   google.protobuf.Timestamp updated_at = 13;
+  bool completed = 14;
 }
 
 message EventPatch {
@@ -49,6 +51,7 @@ message EventPatch {
   optional string related_vacancy_id = 8;
   optional bool reminder_enabled = 9;
   optional int32 reminder_minutes = 10;
+  optional bool completed = 11;
 }
 
 message CreateEventRequest {

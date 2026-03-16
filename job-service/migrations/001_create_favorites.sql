@@ -8,3 +8,6 @@ CREATE TABLE IF NOT EXISTS favorite_vacancies (
 );
 
 CREATE INDEX IF NOT EXISTS idx_favorite_vacancies_user_id ON favorite_vacancies(user_id);
+
+-- +goose Down
+DROP TABLE IF EXISTS favorite_vacancies;
