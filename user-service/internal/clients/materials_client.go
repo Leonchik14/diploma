@@ -62,7 +62,7 @@ func (c *MaterialsClient) UploadUserProfilePhoto(ctx context.Context, userID uin
 	req := &pbmaterials.UploadFileRequest{
 		FileContent: content,
 		Filename:    filename,
-		Name:        fmt.Sprintf("user_%d_profile_photo", userID),
+		Name:        stringPtr(fmt.Sprintf("user_%d_profile_photo", userID)),
 	}
 
 	resp, err := c.client.UploadFile(ctx, req)
@@ -87,3 +87,5 @@ func (c *MaterialsClient) DownloadFile(ctx context.Context, materialID string, u
 		MaterialId: materialID,
 	})
 }
+
+func stringPtr(s string) *string { return &s }
