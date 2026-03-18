@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // AskRequest represents the request to ask a question
 type AskRequest struct {
 	ConversationID string         `json:"conversation_id,omitempty"`
@@ -152,4 +154,25 @@ type ChatMessage struct {
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	CreatedAt string `json:"created_at"`
+}
+
+// CoachHistoryKind — тип записи в единой ленте «история с коучем».
+type CoachHistoryKind int
+
+const (
+	CoachHistoryAskUser CoachHistoryKind = iota + 1
+	CoachHistoryAskAssistant
+	CoachHistoryReviewResume
+	CoachHistoryPrepareVacancy
+)
+
+// CoachHistoryEntry — элемент объединённой истории (Ask + ReviewResume + PrepareForVacancy).
+type CoachHistoryEntry struct {
+	Kind           CoachHistoryKind
+	ConversationID string
+	Content        string
+	ResumeScore    *float64
+	VacancyID      string
+	CreatedAt      time.Time
+	StableOrder    int64 // больше = позже в потоке (при равном CreatedAt — выше в ленте «сначала новые»)
 }

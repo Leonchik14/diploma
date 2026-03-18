@@ -191,5 +191,85 @@ func (r *Repository) DeleteUserData(ctx context.Context, userID uint) error {
 	_, err = database.DB.Exec(ctx,
 		"DELETE FROM resume_parse_sessions WHERE user_id = $1",
 		userID)
+	if err != nil {
+		return err
+	}
+	_, err = database.DB.Exec(ctx,
+		"DELETE FROM coach_interaction_history WHERE user_id = $1",
+		userID)
 	return err
+}
+
+// UserConversationRow — диалог и сырой JSON сообщений.
+type UserConversationRow struct {
+	ConversationID string
+	MessagesJSON   []byte
+	UpdatedAt      time.Time
+}
+
+func (r *Repository) ListUserConversations(ctx context.Context, userID uint) ([]UserConversationRow, error) {
+	rows, err := database.DB.Query(ctx,
+		`SELECT conversation_id::text, messages_json, updated_at
+		 FROM chat_conversations WHERE user_id = $1 ORDER BY updated_at DESC`,
+		userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UserConversationRow
+	for rows.Next() {
+		var row UserConversationRow
+		if err := rows.Scan(&row.ConversationID, &row.MessagesJSON, &row.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) InsertCoachInteraction(ctx context.Context, userID uint, eventType, body string, meta map[string]any) error {
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	_, err = database.DB.Exec(ctx,
+		`INSERT INTO coach_interaction_history (user_id, event_type, body, meta) VALUES ($1, $2, $3, $4::jsonb)`,
+		userID, eventType, body, metaJSON)
+	return err
+}
+
+func (r *Repository) ListCoachInteractions(ctx context.Context, userID uint) ([]CoachInteractionRow, error) {
+	rows, err := database.DB.Query(ctx,
+		`SELECT id, event_type, body, meta, created_at FROM coach_interaction_history
+		 WHERE user_id = $1 ORDER BY created_at ASC, id ASC`,
+		userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CoachInteractionRow
+	for rows.Next() {
+		var row CoachInteractionRow
+		if err := rows.Scan(&row.ID, &row.EventType, &row.Body, &row.MetaJSON, &row.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) DeleteCoachInteractionsByUser(ctx context.Context, userID uint) error {
+	_, err := database.DB.Exec(ctx, `DELETE FROM coach_interaction_history WHERE user_id = $1`, userID)
+	return err
+}
+
+// CoachInteractionRow — запись ReviewResume / PrepareForVacancy.
+type CoachInteractionRow struct {
+	ID        int64
+	EventType string
+	Body      string
+	MetaJSON  []byte
+	CreatedAt time.Time
 }

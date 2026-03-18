@@ -48,6 +48,7 @@ service BackendGateway {
   rpc PrepareForVacancy(coach.PrepareForVacancyRequest) returns (coach.PrepareForVacancyResponse);
   rpc ReviewResume(coach.ReviewResumeRequest) returns (coach.ReviewResumeResponse);
   rpc ClearChatHistory(coach.ClearChatHistoryRequest) returns (coach.ClearChatHistoryResponse);
+  rpc GetCoachChatHistory(coach.GetCoachChatHistoryRequest) returns (coach.GetCoachChatHistoryResponse);
   
   // Jobs
   rpc SearchJobs(jobs.SearchJobsRequest) returns (jobs.SearchJobsResponse);

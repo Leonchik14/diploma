@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"career-coach-service/internal/client"
 	"career-coach-service/internal/llm"
@@ -13,6 +16,15 @@ import (
 	pbjobs "proto/jobs"
 	pbuser "proto/user"
 )
+
+// Инструкция для ответов в клиенте без Markdown и лишних спецсимволов.
+const coachPlainTextOutputRule = `
+
+ФОРМАТ ДЛЯ ОТОБРАЖЕНИЯ В ПРИЛОЖЕНИИ (обязательно):
+- Отвечай обычным текстом: без Markdown — не выделяй текст звёздочками, подчёркиваниями, решётками, не используй блоки кода в обратных кавычках.
+- Не используй символ табуляции; абзацы разделяй пустой строкой.
+- Списки: нумерация как "1. текст", маркеры как "- текст" с новой строки, без других спецсимволов разметки.
+- Пиши связным русским текстом, без произвольных символов Unicode вместо букв.`
 
 type CoachService struct {
 	llmClient        *llm.Client
@@ -45,8 +57,9 @@ func (s *CoachService) Ask(ctx context.Context, userID uint, req *model.AskReque
 		return nil, fmt.Errorf("failed to get conversation history: %w", err)
 	}
 
+	serverProfileBlock := s.loadUserProfileBlockForLLM(ctx, userID)
 	systemPrompt := s.buildSystemPrompt()
-	userMessage := s.buildUserMessage(req, history)
+	userMessage := s.buildUserMessage(req, history, serverProfileBlock)
 
 	messages := []model.Message{
 		{Role: "system", Content: systemPrompt},
@@ -88,6 +101,11 @@ func (s *CoachService) ClearChatHistory(ctx context.Context, userID uint, conver
 	if err != nil {
 		return 0, fmt.Errorf("clear chat history: %w", err)
 	}
+	if conversationID == "" {
+		if err := s.repo.DeleteCoachInteractionsByUser(ctx, userID); err != nil {
+			return deleted, fmt.Errorf("clear coach interactions: %w", err)
+		}
+	}
 	return deleted, nil
 }
 
@@ -106,8 +124,12 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 	}
 
 	vacancyText := formatVacancyForLLM(vacancy)
-	systemPrompt := `Ты профессиональный карьерный коуч. На основе описания вакансии с hh.ru дай конкретные рекомендации по подготовке к собеседованию: что изучить, какие вопросы могут задать, на что обратить внимание. Будь практичным и конкретным. Отвечай на русском языке.`
+	profileBlock := s.loadUserProfileBlockForLLM(ctx, userID)
+	systemPrompt := `Ты профессиональный карьерный коуч. На основе описания вакансии с hh.ru дай конкретные рекомендации по подготовке к собеседованию: что изучить, какие вопросы могут задать, на что обратить внимание. Учитывай профиль кандидата (роли, опыт, навыки), если он передан. Будь практичным и конкретным. Отвечай на русском языке.` + coachPlainTextOutputRule
 	userMessage := fmt.Sprintf("Вакансия:\n%s\n\nДай рекомендации по подготовке к собеседованию на эту вакансию.", vacancyText)
+	if profileBlock != "" {
+		userMessage = profileBlock + "\n" + userMessage
+	}
 
 	messages := []model.Message{
 		{Role: "system", Content: systemPrompt},
@@ -118,6 +140,9 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 	if err != nil {
 		return "", fmt.Errorf("failed to get LLM response: %w", err)
 	}
+	_ = s.repo.InsertCoachInteraction(ctx, userID, "prepare_vacancy", recommendations, map[string]any{
+		"vacancy_id": vacancyID,
+	})
 	return recommendations, nil
 }
 
@@ -147,7 +172,7 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 - пункт 2
 ...
 
-Отвечай на русском языке.`
+Отвечай на русском языке.` + coachPlainTextOutputRule
 	userMessage := fmt.Sprintf("Резюме пользователя:\n%s\n\nПроанализируй и дай оценку с рекомендациями.", profileText)
 
 	messages := []model.Message{
@@ -161,7 +186,118 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 	}
 
 	score = parseScoreFromLLMResponse(answer)
+	_ = s.repo.InsertCoachInteraction(ctx, userID, "review_resume", answer, map[string]any{
+		"score": score,
+	})
 	return score, answer, nil
+}
+
+const (
+	maxCoachHistoryPage = 200
+	defaultCoachHistoryPage = 50
+)
+
+// GetCoachChatHistory объединяет сообщения Ask из всех диалогов и вызовы ReviewResume / PrepareForVacancy.
+func (s *CoachService) GetCoachChatHistory(ctx context.Context, userID uint, pageSize, pageOffset int) ([]model.CoachHistoryEntry, int, error) {
+	if pageSize <= 0 {
+		pageSize = defaultCoachHistoryPage
+	}
+	if pageSize > maxCoachHistoryPage {
+		pageSize = maxCoachHistoryPage
+	}
+	if pageOffset < 0 {
+		pageOffset = 0
+	}
+
+	var entries []model.CoachHistoryEntry
+	var stable int64
+
+	convs, err := s.repo.ListUserConversations(ctx, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list conversations: %w", err)
+	}
+	for _, conv := range convs {
+		var messages []model.ChatMessage
+		if len(conv.MessagesJSON) > 0 {
+			_ = json.Unmarshal(conv.MessagesJSON, &messages)
+		}
+		for _, msg := range messages {
+			if msg.Role != "user" && msg.Role != "assistant" {
+				continue
+			}
+			t := conv.UpdatedAt
+			if msg.CreatedAt != "" {
+				if parsed, e := time.Parse(time.RFC3339, msg.CreatedAt); e == nil {
+					t = parsed
+				}
+			}
+			kind := model.CoachHistoryAskUser
+			if msg.Role == "assistant" {
+				kind = model.CoachHistoryAskAssistant
+			}
+			stable++
+			entries = append(entries, model.CoachHistoryEntry{
+				Kind:           kind,
+				ConversationID: conv.ConversationID,
+				Content:        msg.Content,
+				CreatedAt:      t,
+				StableOrder:    stable,
+			})
+		}
+	}
+
+	interactions, err := s.repo.ListCoachInteractions(ctx, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list coach interactions: %w", err)
+	}
+	for _, row := range interactions {
+		var meta map[string]any
+		_ = json.Unmarshal(row.MetaJSON, &meta)
+		stable++
+		entry := model.CoachHistoryEntry{
+			Content:     row.Body,
+			CreatedAt:   row.CreatedAt,
+			StableOrder: stable,
+		}
+		switch row.EventType {
+		case "review_resume":
+			entry.Kind = model.CoachHistoryReviewResume
+			if v, ok := meta["score"].(float64); ok {
+				entry.ResumeScore = &v
+			} else if n, ok := meta["score"].(json.Number); ok {
+				if f, e := n.Float64(); e == nil {
+					entry.ResumeScore = &f
+				}
+			}
+		case "prepare_vacancy":
+			entry.Kind = model.CoachHistoryPrepareVacancy
+			if v, ok := meta["vacancy_id"].(string); ok {
+				entry.VacancyID = v
+			}
+		default:
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		a, b := entries[i].CreatedAt, entries[j].CreatedAt
+		if !a.Equal(b) {
+			return a.After(b)
+		}
+		return entries[i].StableOrder > entries[j].StableOrder
+	})
+
+	total := len(entries)
+	start := pageOffset
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return entries[start:end], total, nil
 }
 
 func formatVacancyForLLM(v *pbjobs.Vacancy) string {
@@ -259,21 +395,42 @@ func (s *CoachService) buildSystemPrompt() string {
 ВАЖНЫЕ ПРАВИЛА:
 1. НИКОГДА не выдумывай информацию. Используй только информацию, предоставленную в вопросе пользователя и контексте.
 2. Если у тебя недостаточно информации для ответа, задавай уточняющие вопросы вместо того, чтобы угадывать.
-3. Всегда основывай свои советы на предоставленных фрагментах контекста и профиле резюме пользователя.
+3. Всегда основывай свои советы на предоставленных фрагментах контекста и блоке «Профиль пользователя» (целевые роли = специальность/направление, уровень опыта, навыки, регион и т.д.). На вопросы вроде «какая у меня специальность» отвечай по этим данным; если профиля нет — скажи, что данных нет.
 4. Будь профессиональным, поддерживающим и конструктивным в своих ответах.
 5. Фокусируйся на практических, применимых советах.
 6. Если в контексте нет релевантной информации, явно укажи, что тебе нужна дополнительная информация.
 
 ВАЖНО: Всегда отвечай на русском языке.
 
-Помни: Ты здесь, чтобы помочь пользователям добиться успеха в их карьерном пути.`
+Помни: Ты здесь, чтобы помочь пользователям добиться успеха в их карьерном пути.` + coachPlainTextOutputRule
 }
 
-func (s *CoachService) buildUserMessage(req *model.AskRequest, history []model.ChatMessage) string {
+// loadUserProfileBlockForLLM подгружает профиль из user-service для обогащения контекста LLM.
+func (s *CoachService) loadUserProfileBlockForLLM(ctx context.Context, userID uint) string {
+	if s.userClient == nil {
+		return ""
+	}
+	resp, err := s.userClient.GetResumeProfileInternal(ctx, userID)
+	if err != nil || resp == nil || resp.Profile == nil {
+		return ""
+	}
+	body := formatResumeProfileForLLM(resp.Profile)
+	if body == "" {
+		return ""
+	}
+	return "--- Профиль пользователя (данные из приложения; целевые роли — специальность/направление, уровень опыта — грейд) ---\n" + body
+}
+
+func (s *CoachService) buildUserMessage(req *model.AskRequest, history []model.ChatMessage, serverProfileBlock string) string {
 	var parts []string
 
+	if serverProfileBlock != "" {
+		parts = append(parts, serverProfileBlock)
+		parts = append(parts, "")
+	}
+
 	if req.ResumeProfile != nil {
-		parts = append(parts, "--- Resume Profile ---")
+		parts = append(parts, "--- Дополнительный контекст от клиента (если передан) ---")
 		if req.ResumeProfile.Role != "" {
 			parts = append(parts, fmt.Sprintf("Role: %s", req.ResumeProfile.Role))
 		}

@@ -144,6 +144,34 @@ message ClearChatHistoryResponse {
   int32 deleted_conversations = 2;
 }
 
+// Единая лента: вопросы Ask, ответы коуча, анализ резюме, подготовка к вакансии.
+enum CoachHistoryEntryKind {
+  COACH_HISTORY_ENTRY_KIND_UNSPECIFIED = 0;
+  COACH_HISTORY_ENTRY_KIND_ASK_USER = 1;
+  COACH_HISTORY_ENTRY_KIND_ASK_ASSISTANT = 2;
+  COACH_HISTORY_ENTRY_KIND_REVIEW_RESUME = 3;
+  COACH_HISTORY_ENTRY_KIND_PREPARE_VACANCY = 4;
+}
+
+message CoachHistoryEntry {
+  CoachHistoryEntryKind kind = 1;
+  string conversation_id = 2;
+  string content = 3;
+  optional double resume_score = 4;
+  optional string vacancy_id = 5;
+  string created_at = 6; // RFC3339
+}
+
+message GetCoachChatHistoryRequest {
+  int32 page_size = 1;
+  int32 page_offset = 2;
+}
+
+message GetCoachChatHistoryResponse {
+  repeated CoachHistoryEntry entries = 1;
+  int32 total_count = 2;
+}
+
 service CoachService {
   rpc Ask(AskRequest) returns (AskResponse);
   rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse); // TODO: delete
@@ -153,5 +181,6 @@ service CoachService {
   rpc PrepareForVacancy(PrepareForVacancyRequest) returns (PrepareForVacancyResponse);
   rpc ReviewResume(ReviewResumeRequest) returns (ReviewResumeResponse);
   rpc ClearChatHistory(ClearChatHistoryRequest) returns (ClearChatHistoryResponse);
+  rpc GetCoachChatHistory(GetCoachChatHistoryRequest) returns (GetCoachChatHistoryResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"career-coach-service/internal/model"
 	"career-coach-service/internal/requestctx"
@@ -232,6 +233,54 @@ func (h *CoachHandler) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 		Score:          score,
 		Recommendations: recommendations,
 	}, nil
+}
+
+func (h *CoachHandler) GetCoachChatHistory(ctx context.Context, req *pbcoach.GetCoachChatHistoryRequest) (*pbcoach.GetCoachChatHistoryResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entries, total, err := h.coachService.GetCoachChatHistory(ctx, userID, int(req.GetPageSize()), int(req.GetPageOffset()))
+	if err != nil {
+		h.logger.Error("get coach chat history", "error", err, "user_id", userID)
+		return nil, status.Errorf(codes.Internal, "failed to load chat history")
+	}
+	out := make([]*pbcoach.CoachHistoryEntry, 0, len(entries))
+	for _, e := range entries {
+		pb := &pbcoach.CoachHistoryEntry{
+			Kind:           coachHistoryKindToProto(e.Kind),
+			ConversationId: e.ConversationID,
+			Content:        e.Content,
+			CreatedAt:      e.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		if e.ResumeScore != nil {
+			pb.ResumeScore = e.ResumeScore
+		}
+		if e.VacancyID != "" {
+			v := e.VacancyID
+			pb.VacancyId = &v
+		}
+		out = append(out, pb)
+	}
+	return &pbcoach.GetCoachChatHistoryResponse{
+		Entries:     out,
+		TotalCount:  int32(total),
+	}, nil
+}
+
+func coachHistoryKindToProto(k model.CoachHistoryKind) pbcoach.CoachHistoryEntryKind {
+	switch k {
+	case model.CoachHistoryAskUser:
+		return pbcoach.CoachHistoryEntryKind_COACH_HISTORY_ENTRY_KIND_ASK_USER
+	case model.CoachHistoryAskAssistant:
+		return pbcoach.CoachHistoryEntryKind_COACH_HISTORY_ENTRY_KIND_ASK_ASSISTANT
+	case model.CoachHistoryReviewResume:
+		return pbcoach.CoachHistoryEntryKind_COACH_HISTORY_ENTRY_KIND_REVIEW_RESUME
+	case model.CoachHistoryPrepareVacancy:
+		return pbcoach.CoachHistoryEntryKind_COACH_HISTORY_ENTRY_KIND_PREPARE_VACANCY
+	default:
+		return pbcoach.CoachHistoryEntryKind_COACH_HISTORY_ENTRY_KIND_UNSPECIFIED
+	}
 }
 
 func (h *CoachHandler) ClearChatHistory(ctx context.Context, req *pbcoach.ClearChatHistoryRequest) (*pbcoach.ClearChatHistoryResponse, error) {
