@@ -51,7 +51,6 @@ message EventPatch {
   optional string related_vacancy_id = 8;
   optional bool reminder_enabled = 9;
   optional int32 reminder_minutes = 10;
-  optional bool completed = 11;
 }
 
 message CreateEventRequest {
@@ -109,6 +108,13 @@ message ListUpcomingResponse {
   repeated Event events = 1;
 }
 
+message GetInterviewStatsRequest {}
+
+message GetInterviewStatsResponse {
+  int32 upcoming = 1;
+  int32 total = 2;
+}
+
 message DeleteUserDataRequest {
   uint32 user_id = 1;
 }
@@ -124,5 +130,6 @@ service CalendarService {
   rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
   rpc ListUpcoming(ListUpcomingRequest) returns (ListUpcomingResponse);
+  rpc GetInterviewStats(GetInterviewStatsRequest) returns (GetInterviewStatsResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

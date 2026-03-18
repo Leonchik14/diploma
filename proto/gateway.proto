@@ -61,4 +61,5 @@ service BackendGateway {
   rpc DeleteEvent(calendar.DeleteEventRequest) returns (calendar.DeleteEventResponse);
   rpc ListEvents(calendar.ListEventsRequest) returns (calendar.ListEventsResponse);
   rpc ListUpcoming(calendar.ListUpcomingRequest) returns (calendar.ListUpcomingResponse);
+  rpc GetInterviewStats(calendar.GetInterviewStatsRequest) returns (calendar.GetInterviewStatsResponse);
 }

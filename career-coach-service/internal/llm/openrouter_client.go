@@ -49,7 +49,6 @@ func (c *Client) ChatCompletion(ctx context.Context, modelName string, messages 
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HTTP-Referer", "https://github.com/your-org/your-repo") // Optional: for OpenRouter analytics
 	req.Header.Set("X-Title", "Interview Prep App") // Optional: for OpenRouter analytics
 
 	resp, err := c.client.Do(req)

@@ -221,3 +221,7 @@ func (p *GatewayProxy) ListEvents(ctx context.Context, req *pbcalendar.ListEvent
 func (p *GatewayProxy) ListUpcoming(ctx context.Context, req *pbcalendar.ListUpcomingRequest) (*pbcalendar.ListUpcomingResponse, error) {
 	return p.calendarClient.ListUpcoming(p.forwardMetadata(ctx), req)
 }
+
+func (p *GatewayProxy) GetInterviewStats(ctx context.Context, req *pbcalendar.GetInterviewStatsRequest) (*pbcalendar.GetInterviewStatsResponse, error) {
+	return p.calendarClient.GetInterviewStats(p.forwardMetadata(ctx), req)
+}

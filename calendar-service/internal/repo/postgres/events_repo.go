@@ -261,6 +261,17 @@ func decodePageToken(tokenStr string) (*model.PageToken, error) {
 	return &token, nil
 }
 
+func (r *EventsRepo) CountInterviews(ctx context.Context, userID uint) (upcoming int32, total int32, err error) {
+	err = r.db.QueryRow(ctx,
+		`SELECT 
+			COUNT(*) FILTER (WHERE start_time > NOW()),
+			COUNT(*)
+		 FROM calendar_events 
+		 WHERE user_id = $1 AND event_type = 1`,
+		userID).Scan(&upcoming, &total)
+	return
+}
+
 func (r *EventsRepo) DeleteUserData(ctx context.Context, userID uint) error {
 	_, err := r.db.Exec(ctx,
 		"DELETE FROM calendar_events WHERE user_id = $1",

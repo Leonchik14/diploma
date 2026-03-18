@@ -34,7 +34,7 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		OpenRouterAPIKey:   getEnv("OPENROUTER_API_KEY", ""),
 		ParseModel:         getEnv("PARSE_MODEL", "google/gemma-3-27b-instruct"),
-		CoachModel:         getEnv("COACH_MODEL", "google/gemma-3-27b-instruct"),
+		CoachModel:         getEnv("COACH_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
 		HTTPPort:           getEnv("HTTP_PORT", "8082"),
 		GRPCPort:           getEnv("GRPC_PORT", "9093"),
 		OpenRouterEndpoint: "https://openrouter.ai/api/v1/chat/completions",

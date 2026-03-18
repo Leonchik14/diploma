@@ -165,6 +165,23 @@ func (h *CalendarHandler) ListUpcoming(ctx context.Context, req *pbcalendar.List
 	}, nil
 }
 
+func (h *CalendarHandler) GetInterviewStats(ctx context.Context, req *pbcalendar.GetInterviewStatsRequest) (*pbcalendar.GetInterviewStatsResponse, error) {
+	userID, ok := requestctx.UserID(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
+	}
+
+	upcoming, total, err := h.svc.GetInterviewStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pbcalendar.GetInterviewStatsResponse{
+		Upcoming: upcoming,
+		Total:    total,
+	}, nil
+}
+
 func (h *CalendarHandler) DeleteUserData(ctx context.Context, req *pbcalendar.DeleteUserDataRequest) (*pbcalendar.DeleteUserDataResponse, error) {
 	userID := uint(req.UserId)
 
@@ -273,6 +290,7 @@ func (h *CalendarHandler) modelToPB(e *model.Event) *pbcalendar.Event {
 		ReminderMinutes:   e.ReminderMinutes,
 		CreatedAt:         timestamppb.New(e.CreatedAt),
 		UpdatedAt:         timestamppb.New(e.UpdatedAt),
+		Completed:         time.Now().After(e.EndTime),
 	}
 
 	if e.Description != nil {

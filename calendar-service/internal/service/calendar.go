@@ -156,6 +156,14 @@ func (s *CalendarService) ListUpcoming(ctx context.Context, userID uint, fromTim
 	return events, nil
 }
 
+func (s *CalendarService) GetInterviewStats(ctx context.Context, userID uint) (upcoming int32, total int32, err error) {
+	upcoming, total, err = s.repo.CountInterviews(ctx, userID)
+	if err != nil {
+		return 0, 0, status.Errorf(codes.Internal, "failed to get interview stats: %v", err)
+	}
+	return
+}
+
 func (s *CalendarService) DeleteUserData(ctx context.Context, userID uint) error {
 	return s.repo.DeleteUserData(ctx, userID)
 }
