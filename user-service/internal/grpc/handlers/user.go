@@ -75,7 +75,14 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 		return nil, status.Errorf(codes.NotFound, "user not found")
 	}
 
-	// resume_uploaded: пока не агрегируем с materials, можно добавить позже
+	// resume_uploaded: считаем по наличию записи в таблице резюме
+	resumeUploaded := false
+	if h.resumeRepo != nil {
+		if row, err := h.resumeRepo.GetByUserID(ctx, uint(userID)); err == nil && row != nil {
+			resumeUploaded = true
+		}
+	}
+
 	// total/completed/upcoming_interviews: пока 0, агрегация с calendar — позже
 	return &pbuser.GetMeResponse{
 		User: &pbuser.UserProfile{
@@ -84,7 +91,7 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 			LastName:             lastName,
 			Email:                email,
 			Username:             username,
-			ResumeUploaded:        false,
+			ResumeUploaded:       resumeUploaded,
 			TotalInterviews:      0,
 			CompletedInterviews:  0,
 			UpcomingInterviews:   0,
