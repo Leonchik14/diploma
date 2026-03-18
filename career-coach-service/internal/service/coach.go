@@ -83,6 +83,14 @@ func (s *CoachService) Ask(ctx context.Context, userID uint, req *model.AskReque
 	}, nil
 }
 
+func (s *CoachService) ClearChatHistory(ctx context.Context, userID uint, conversationID string) (deleted int64, err error) {
+	deleted, err = s.repo.DeleteChatHistory(ctx, userID, conversationID)
+	if err != nil {
+		return 0, fmt.Errorf("clear chat history: %w", err)
+	}
+	return deleted, nil
+}
+
 func (s *CoachService) DeleteUserData(ctx context.Context, userID uint) error {
 	return s.repo.DeleteUserData(ctx, userID)
 }

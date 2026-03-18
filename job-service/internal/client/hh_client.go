@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,23 +33,35 @@ type HHSnippet struct {
 	Responsibility *string `json:"responsibility"`
 }
 
+var (
+	reHHHTMLTag      = regexp.MustCompile(`(?s)<[^>]+>`)
+	reHHHighlightTag = regexp.MustCompile(`(?i)</?highlighttext>`)
+)
+
 func (v *HHVacancy) GetDescription() string {
-	var raw string
-	if v.Snippet != nil && v.Snippet.Responsibility != nil && *v.Snippet.Responsibility != "" {
-		raw = *v.Snippet.Responsibility
-	} else {
-		raw = v.Description
+	// Поиск: в основном snippet.responsibility. Карточка вакансии GET /vacancies/{id}: часто только HTML description.
+	if v.Snippet != nil {
+		if v.Snippet.Responsibility != nil {
+			if t := strings.TrimSpace(*v.Snippet.Responsibility); t != "" {
+				return sanitizeHH(t)
+			}
+		}
+		if v.Snippet.Requirement != nil {
+			if t := strings.TrimSpace(*v.Snippet.Requirement); t != "" {
+				return sanitizeHH(t)
+			}
+		}
 	}
+	raw := html.UnescapeString(v.Description)
+	raw = reHHHTMLTag.ReplaceAllString(raw, " ")
+	raw = strings.Join(strings.Fields(raw), " ")
 	return sanitizeHH(raw)
 }
 
 func sanitizeHH(s string) string {
-	r := strings.NewReplacer(
-		"<highlighttext>", "",
-		"</highlighttext>", "",
-		`\"`, `"`,
-	)
-	return r.Replace(s)
+	s = reHHHighlightTag.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, `\"`, `"`)
+	return strings.TrimSpace(s)
 }
 
 type HHExperience struct {

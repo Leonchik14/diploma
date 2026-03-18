@@ -134,6 +134,16 @@ message DeleteUserDataResponse {
   bool ok = 1;
 }
 
+// Пустой conversation_id — удалить всю историю чата пользователя; иначе — один диалог.
+message ClearChatHistoryRequest {
+  optional string conversation_id = 1;
+}
+
+message ClearChatHistoryResponse {
+  bool ok = 1;
+  int32 deleted_conversations = 2;
+}
+
 service CoachService {
   rpc Ask(AskRequest) returns (AskResponse);
   rpc ParseResume(ParseResumeRequest) returns (ParseResumeResponse); // TODO: delete
@@ -142,5 +152,6 @@ service CoachService {
   rpc GetResumeSession(GetResumeSessionRequest) returns (GetResumeSessionResponse);
   rpc PrepareForVacancy(PrepareForVacancyRequest) returns (PrepareForVacancyResponse);
   rpc ReviewResume(ReviewResumeRequest) returns (ReviewResumeResponse);
+  rpc ClearChatHistory(ClearChatHistoryRequest) returns (ClearChatHistoryResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

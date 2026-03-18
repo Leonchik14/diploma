@@ -172,6 +172,7 @@
 | `GetResumeSession` | Получение сессии парсинга резюме |
 | `PrepareForVacancy` | Рекомендации по подготовке к вакансии (по ID с HH) |
 | `ReviewResume` | Оценка резюме + рекомендации по улучшению |
+| `ClearChatHistory` | Удаление истории чата с коучом |
 
 ### Ask
 
@@ -206,6 +207,11 @@
 - **Request:** `ReviewResumeRequest` — пустой (используется профиль текущего пользователя).
 - **Response:** `ReviewResumeResponse` — `score` (0–10), `recommendations` (текст с оценкой и рекомендациями по улучшению).
 - Анализирует текущее резюме пользователя (ResumeProfile) и даёт оценку с советами.
+
+### ClearChatHistory
+
+- **Request:** `ClearChatHistoryRequest` — опционально `conversation_id`. Если **не передавать** (или пустая строка) — удаляются **все** диалоги пользователя; если указан UUID диалога — удаляется только он.
+- **Response:** `ClearChatHistoryResponse` — `ok`, `deleted_conversations` (сколько строк удалено в БД).
 
 ---
 

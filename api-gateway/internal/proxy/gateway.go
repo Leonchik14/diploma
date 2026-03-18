@@ -187,6 +187,10 @@ func (p *GatewayProxy) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 	return p.coachClient.ReviewResume(p.forwardMetadata(ctx), req)
 }
 
+func (p *GatewayProxy) ClearChatHistory(ctx context.Context, req *pbcoach.ClearChatHistoryRequest) (*pbcoach.ClearChatHistoryResponse, error) {
+	return p.coachClient.ClearChatHistory(p.forwardMetadata(ctx), req)
+}
+
 // Jobs
 func (p *GatewayProxy) SearchJobs(ctx context.Context, req *pbjobs.SearchJobsRequest) (*pbjobs.SearchJobsResponse, error) {
 	return p.jobsClient.SearchJobs(p.forwardMetadata(ctx), req)

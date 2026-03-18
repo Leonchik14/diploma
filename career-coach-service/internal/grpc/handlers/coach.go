@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"career-coach-service/internal/model"
 	"career-coach-service/internal/requestctx"
@@ -230,6 +231,26 @@ func (h *CoachHandler) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 	return &pbcoach.ReviewResumeResponse{
 		Score:          score,
 		Recommendations: recommendations,
+	}, nil
+}
+
+func (h *CoachHandler) ClearChatHistory(ctx context.Context, req *pbcoach.ClearChatHistoryRequest) (*pbcoach.ClearChatHistoryResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	convID := ""
+	if req.ConversationId != nil {
+		convID = strings.TrimSpace(*req.ConversationId)
+	}
+	deleted, err := h.coachService.ClearChatHistory(ctx, userID, convID)
+	if err != nil {
+		h.logger.Error("clear chat history failed", "user_id", userID, "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to clear chat history")
+	}
+	return &pbcoach.ClearChatHistoryResponse{
+		Ok:                   true,
+		DeletedConversations: int32(deleted),
 	}, nil
 }
 

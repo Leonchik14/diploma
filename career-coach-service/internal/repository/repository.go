@@ -160,6 +160,26 @@ func (r *Repository) AddMessageToConversation(ctx context.Context, conversationI
 	return err
 }
 
+// DeleteChatHistory removes chat rows for user. If conversationID is non-empty, only that conversation.
+func (r *Repository) DeleteChatHistory(ctx context.Context, userID uint, conversationID string) (int64, error) {
+	if conversationID != "" {
+		tag, err := database.DB.Exec(ctx,
+			`DELETE FROM chat_conversations WHERE user_id = $1 AND conversation_id = $2`,
+			userID, conversationID)
+		if err != nil {
+			return 0, err
+		}
+		return tag.RowsAffected(), nil
+	}
+	tag, err := database.DB.Exec(ctx,
+		`DELETE FROM chat_conversations WHERE user_id = $1`,
+		userID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (r *Repository) DeleteUserData(ctx context.Context, userID uint) error {
 	_, err := database.DB.Exec(ctx,
 		"DELETE FROM chat_conversations WHERE user_id = $1",
