@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"career-coach-service/internal/config"
 	"career-coach-service/internal/grpc/handlers"
@@ -21,7 +22,7 @@ import (
 
 func NewServer(cfg *config.Config, coachService *service.CoachService, resumeService *service.ResumeService, logger *slog.Logger) *grpc.Server {
 	s := grpc.NewServer(
-		grpc.UnaryInterceptor(internalAuthInterceptor(cfg.InternalAPIKey, logger)),
+		grpc.ChainUnaryInterceptor(loggingInterceptor(logger), internalAuthInterceptor(cfg.InternalAPIKey, logger)),
 	)
 
 	handler := handlers.NewCoachHandler(coachService, resumeService, logger)
@@ -29,6 +30,24 @@ func NewServer(cfg *config.Config, coachService *service.CoachService, resumeSer
 
 	reflection.Register(s)
 	return s
+}
+
+func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		dur := time.Since(start).Milliseconds()
+		code := codes.OK
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
+		}
+		if err != nil {
+			logger.Warn("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur, "error", err.Error())
+		} else {
+			logger.Info("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur)
+		}
+		return resp, err
+	}
 }
 
 func internalAuthInterceptor(internalAPIKey string, logger *slog.Logger) grpc.UnaryServerInterceptor {

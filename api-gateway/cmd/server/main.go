@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"api-gateway/internal/config"
 	"api-gateway/internal/interceptor"
@@ -17,7 +19,9 @@ import (
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
 	pbgateway "proto/gateway"
 )
@@ -49,7 +53,7 @@ func main() {
 	}
 
 	s := grpc.NewServer(
-		grpc.UnaryInterceptor(authInterceptor.Unary()),
+		grpc.ChainUnaryInterceptor(loggingInterceptor(logger), authInterceptor.Unary()),
 		grpc.StreamInterceptor(authInterceptor.Stream()),
 	)
 
@@ -73,6 +77,24 @@ func main() {
 	logger.Info("Shutting down server...")
 	s.GracefulStop()
 	logger.Info("Server exited")
+}
+
+func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		dur := time.Since(start).Milliseconds()
+		code := codes.OK
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
+		}
+		if err != nil {
+			logger.Warn("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur, "error", err.Error())
+		} else {
+			logger.Info("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur)
+		}
+		return resp, err
+	}
 }
 
 func loadPublicKey(keyData string) (*rsa.PublicKey, error) {

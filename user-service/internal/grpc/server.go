@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"user-service/internal/config"
 	"user-service/internal/grpc/handlers"
@@ -48,7 +49,7 @@ func (s *Server) Start() error {
 	}
 
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(s.internalAuthInterceptor),
+		grpc.ChainUnaryInterceptor(loggingInterceptor(s.logger), s.internalAuthInterceptor),
 	)
 
 	pbauth.RegisterAuthServiceServer(grpcServer, s.authHandler)
@@ -71,6 +72,24 @@ func (s *Server) Start() error {
 	s.logger.Info("Shutting down gRPC server...")
 	grpcServer.GracefulStop()
 	return nil
+}
+
+func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		dur := time.Since(start).Milliseconds()
+		code := codes.OK
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
+		}
+		if err != nil {
+			logger.Warn("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur, "error", err.Error())
+		} else {
+			logger.Info("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur)
+		}
+		return resp, err
+	}
 }
 
 var internalOnlyResumeMethods = map[string]bool{

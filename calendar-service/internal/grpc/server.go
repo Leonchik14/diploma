@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"calendar-service/internal/config"
 	"calendar-service/internal/requestctx"
@@ -16,8 +17,26 @@ import (
 
 func NewServer(cfg *config.Config, logger *slog.Logger) *grpc.Server {
 	return grpc.NewServer(
-		grpc.UnaryInterceptor(internalAuthInterceptor(cfg, logger)),
+		grpc.ChainUnaryInterceptor(loggingInterceptor(logger), internalAuthInterceptor(cfg, logger)),
 	)
+}
+
+func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		dur := time.Since(start).Milliseconds()
+		code := codes.OK
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
+		}
+		if err != nil {
+			logger.Warn("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur, "error", err.Error())
+		} else {
+			logger.Info("gRPC", "method", info.FullMethod, "code", code.String(), "ms", dur)
+		}
+		return resp, err
+	}
 }
 
 func internalAuthInterceptor(cfg *config.Config, logger *slog.Logger) grpc.UnaryServerInterceptor {
