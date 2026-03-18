@@ -107,6 +107,9 @@ func (s *Server) internalAuthInterceptor(
 	if info.FullMethod == "/auth.AuthService/Login" ||
 		info.FullMethod == "/auth.AuthService/Refresh" ||
 		info.FullMethod == "/auth.AuthService/Register" ||
+		info.FullMethod == "/auth.AuthService/CheckPasswordResetEmail" ||
+		info.FullMethod == "/auth.AuthService/SendPasswordResetCode" ||
+		info.FullMethod == "/auth.AuthService/VerifyPasswordReset" ||
 		info.FullMethod == "/user.UserService/RequestPasswordReset" ||
 		info.FullMethod == "/user.UserService/VerifyPasswordResetCode" ||
 		info.FullMethod == "/user.UserService/ResetPassword" {

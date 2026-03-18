@@ -64,6 +64,13 @@ func (p *GatewayProxy) forwardMetadata(ctx context.Context) context.Context {
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
+func (p *GatewayProxy) internalContext(ctx context.Context) context.Context {
+	md := metadata.New(map[string]string{
+		"x-internal-api-key": p.cfg.InternalAPIKey,
+	})
+	return metadata.NewOutgoingContext(ctx, md)
+}
+
 // Auth
 func (p *GatewayProxy) Register(ctx context.Context, req *pbauth.RegisterRequest) (*pbauth.RegisterResponse, error) {
 	return p.authClient.Register(ctx, req)
@@ -78,15 +85,15 @@ func (p *GatewayProxy) Refresh(ctx context.Context, req *pbauth.RefreshRequest) 
 }
 
 func (p *GatewayProxy) CheckPasswordResetEmail(ctx context.Context, req *pbauth.PasswordResetCheckEmailRequest) (*pbauth.PasswordResetCheckEmailResponse, error) {
-	return p.authClient.CheckPasswordResetEmail(ctx, req)
+	return p.authClient.CheckPasswordResetEmail(p.internalContext(ctx), req)
 }
 
 func (p *GatewayProxy) SendPasswordResetCode(ctx context.Context, req *pbauth.PasswordResetSendCodeRequest) (*pbauth.PasswordResetSendCodeResponse, error) {
-	return p.authClient.SendPasswordResetCode(ctx, req)
+	return p.authClient.SendPasswordResetCode(p.internalContext(ctx), req)
 }
 
 func (p *GatewayProxy) VerifyPasswordReset(ctx context.Context, req *pbauth.PasswordResetVerifyRequest) (*pbauth.PasswordResetVerifyResponse, error) {
-	return p.authClient.VerifyPasswordReset(ctx, req)
+	return p.authClient.VerifyPasswordReset(p.internalContext(ctx), req)
 }
 
 // User
