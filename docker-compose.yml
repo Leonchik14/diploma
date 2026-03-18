@@ -109,10 +109,13 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Interview Prep App}
       SMTP_TLS: ${SMTP_TLS:-true}
+      CALENDAR_SERVICE_ADDR: ${CALENDAR_SERVICE_ADDR:-calendar-service:9095}
     ports:
       - "9091:9091"
     depends_on:
       postgres:
+        condition: service_healthy
+      calendar-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9091 || exit 1"]

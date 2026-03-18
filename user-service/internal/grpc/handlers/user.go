@@ -30,6 +30,7 @@ type UserHandler struct {
 	accountDeletionSvc *service.AccountDeletionService
 	resumeRepo         *postgres.ResumeProfileRepo
 	materialsClient    *clients.MaterialsClient
+	calendarClient     *clients.CalendarClient
 }
 
 func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
@@ -41,6 +42,7 @@ func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
 	accountDeletionSvc := service.NewAccountDeletionService(cfg, logger)
 	resumeRepo := postgres.NewResumeProfileRepo()
 	materialsClient := clients.NewMaterialsClient(cfg.MaterialsServiceAddr, cfg.InternalAPIKey, logger)
+	calendarClient := clients.NewCalendarClient(cfg.CalendarServiceAddr, cfg.InternalAPIKey, logger)
 
 	return &UserHandler{
 		cfg:                cfg,
@@ -49,6 +51,7 @@ func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
 		accountDeletionSvc: accountDeletionSvc,
 		resumeRepo:         resumeRepo,
 		materialsClient:    materialsClient,
+		calendarClient:     calendarClient,
 	}
 }
 
@@ -83,7 +86,15 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 		}
 	}
 
-	// total/completed/upcoming_interviews: пока 0, агрегация с calendar — позже
+	var totalIv, completedIv, upcomingIv int32
+	if h.calendarClient != nil {
+		upcomingIv, completedIv, totalIv, err = h.calendarClient.GetInterviewStats(ctx, uint(userID))
+		if err != nil {
+			h.logger.Warn("GetMe: calendar interview stats unavailable", "user_id", userID, "error", err)
+			totalIv, completedIv, upcomingIv = 0, 0, 0
+		}
+	}
+
 	return &pbuser.GetMeResponse{
 		User: &pbuser.UserProfile{
 			Id:                   uint32(userID),
@@ -92,9 +103,9 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 			Email:                email,
 			Username:             username,
 			ResumeUploaded:       resumeUploaded,
-			TotalInterviews:      0,
-			CompletedInterviews:  0,
-			UpcomingInterviews:   0,
+			TotalInterviews:      totalIv,
+			CompletedInterviews:  completedIv,
+			UpcomingInterviews:   upcomingIv,
 			NotificationsEnabled: notificationsEnabled,
 		},
 	}, nil

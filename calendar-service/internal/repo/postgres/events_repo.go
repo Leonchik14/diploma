@@ -261,14 +261,16 @@ func decodePageToken(tokenStr string) (*model.PageToken, error) {
 	return &token, nil
 }
 
-func (r *EventsRepo) CountInterviews(ctx context.Context, userID uint) (upcoming int32, total int32, err error) {
+// Счётчики по событиям типа INTERVIEW (1): upcoming — ещё не начались, completed — уже закончились, total — все.
+func (r *EventsRepo) CountInterviews(ctx context.Context, userID uint) (upcoming, completed, total int32, err error) {
 	err = r.db.QueryRow(ctx,
 		`SELECT 
 			COUNT(*) FILTER (WHERE start_time > NOW()),
+			COUNT(*) FILTER (WHERE end_time < NOW()),
 			COUNT(*)
 		 FROM calendar_events 
 		 WHERE user_id = $1 AND event_type = 1`,
-		userID).Scan(&upcoming, &total)
+		userID).Scan(&upcoming, &completed, &total)
 	return
 }
 

@@ -171,14 +171,15 @@ func (h *CalendarHandler) GetInterviewStats(ctx context.Context, req *pbcalendar
 		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
 	}
 
-	upcoming, total, err := h.svc.GetInterviewStats(ctx, userID)
+	upcoming, completed, total, err := h.svc.GetInterviewStats(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &pbcalendar.GetInterviewStatsResponse{
-		Upcoming: upcoming,
-		Total:    total,
+		Upcoming:   upcoming,
+		Total:      total,
+		Completed:  completed,
 	}, nil
 }
 

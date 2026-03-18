@@ -62,7 +62,7 @@ DatabaseURL:              getEnv("DATABASE_URL", "postgres://user:CHANGE_ME@loca
 		MaterialsServiceAddr:        getEnv("MATERIALS_SERVICE_ADDR", "materials-service:50052"),
 		CoachServiceAddr:            getEnv("COACH_SERVICE_ADDR", "career-coach-service:50053"),
 		JobsServiceAddr:             getEnv("JOBS_SERVICE_ADDR", "job-service:50054"),
-		CalendarServiceAddr:         getEnv("CALENDAR_SERVICE_ADDR", "calendar-service:50055"),
+		CalendarServiceAddr:         getEnv("CALENDAR_SERVICE_ADDR", "calendar-service:9095"),
 	}
 }
 

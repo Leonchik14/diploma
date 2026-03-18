@@ -113,6 +113,8 @@ message GetInterviewStatsRequest {}
 message GetInterviewStatsResponse {
   int32 upcoming = 1;
   int32 total = 2;
+  // Собеседования с end_time в прошлом (завершённые)
+  int32 completed = 3;
 }
 
 message DeleteUserDataRequest {
