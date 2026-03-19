@@ -125,7 +125,8 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 
 	vacancyText := formatVacancyForLLM(vacancy)
 	profileBlock := s.loadUserProfileBlockForLLM(ctx, userID)
-	systemPrompt := `Ты профессиональный карьерный коуч. На основе описания вакансии с hh.ru дай конкретные рекомендации по подготовке к собеседованию: что изучить, какие вопросы могут задать, на что обратить внимание. Учитывай профиль кандидата (роли, опыт, навыки), если он передан. Будь практичным и конкретным. Отвечай на русском языке.` + coachPlainTextOutputRule
+	systemPrompt := `Ты профессиональный карьерный коуч. На основе описания вакансии с hh.ru дай конкретные рекомендации по подготовке к собеседованию: что изучить, какие вопросы могут задать, на что обратить внимание. Учитывай профиль кандидата (роли, опыт, навыки), если он передан. Будь практичным и конкретным. Отвечай на русском языке.
+Не используй нумерованные списки вида «1. … 2. …» с переносами строк перед номерами — пиши обычными абзацами, между смысловыми блоками достаточно одной перевод строки.` + coachPlainTextOutputRule
 	userMessage := fmt.Sprintf("Вакансия:\n%s\n\nДай рекомендации по подготовке к собеседованию на эту вакансию.", vacancyText)
 	if profileBlock != "" {
 		userMessage = profileBlock + "\n" + userMessage
@@ -140,6 +141,7 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 	if err != nil {
 		return "", fmt.Errorf("failed to get LLM response: %w", err)
 	}
+	recommendations = normalizePrepareForVacancyText(recommendations)
 	_ = s.repo.InsertCoachInteraction(ctx, userID, "prepare_vacancy", recommendations, map[string]any{
 		"vacancy_id": vacancyID,
 	})
@@ -160,19 +162,15 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 	}
 
 	profileText := formatResumeProfileForLLM(resp.Profile)
-	systemPrompt := `Ты профессиональный HR-эксперт и карьерный консультант. Проанализируй резюме пользователя и:
-1. Поставь оценку от 1 до 10 (целое число или с одним знаком после запятой).
-2. Дай конкретные рекомендации по улучшению резюме: что добавить, что улучшить, какие формулировки изменить.
+	systemPrompt := `Ты профессиональный HR-эксперт и карьерный консультант. Проанализируй резюме пользователя.
 
-Формат ответа:
-ОЦЕНКА: X/10
+СТРОГИЙ ФОРМАТ ОТВЕТА (иначе ответ будет отброшен):
+Строка 1 (только так, латиница): SCORE:7.5
+где число от 0 до 10 (допустима одна цифра после точки или запятой).
+Строка 2: пустая.
+Со строки 3 — рекомендации на русском: связные абзацы, между абзацами одна пустая строка или одна перевод строки. Без нумерации 1. 2. 3. Без маркдауна. Только нормальный русский текст; названия технологий при необходимости латиницей коротко.
 
-РЕКОМЕНДАЦИИ:
-- пункт 1
-- пункт 2
-...
-
-Отвечай на русском языке.` + coachPlainTextOutputRule
+Оцени полноту и качество анкеты как резюме и дай практические советы по улучшению.` + coachPlainTextOutputRule
 	userMessage := fmt.Sprintf("Резюме пользователя:\n%s\n\nПроанализируй и дай оценку с рекомендациями.", profileText)
 
 	messages := []model.Message{
@@ -185,11 +183,17 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 		return 0, "", fmt.Errorf("failed to get LLM response: %w", err)
 	}
 
-	score = parseScoreFromLLMResponse(answer)
-	_ = s.repo.InsertCoachInteraction(ctx, userID, "review_resume", answer, map[string]any{
+	score, recBody := parseReviewResumeScoreAndBody(answer)
+	if score == 0 {
+		score = extractScoreFromText(answer)
+	}
+	if strings.TrimSpace(recBody) == "" {
+		recBody = sanitizeCoachFacingText(stripLeadingScoreSection(answer))
+	}
+	_ = s.repo.InsertCoachInteraction(ctx, userID, "review_resume", recBody, map[string]any{
 		"score": score,
 	})
-	return score, answer, nil
+	return score, recBody, nil
 }
 
 const (
@@ -372,21 +376,6 @@ func formatResumeProfileForLLM(p *pbuser.ResumeProfile) string {
 		parts = append(parts, fmt.Sprintf("Заметки: %s", *p.Notes))
 	}
 	return strings.Join(parts, "\n")
-}
-
-func parseScoreFromLLMResponse(answer string) float64 {
-	// Simple heuristic: look for "X/10" or "ОЦЕНКА: X"
-	lines := strings.Split(answer, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(strings.ToUpper(line))
-		if strings.Contains(line, "/10") {
-			var score float64
-			if _, err := fmt.Sscanf(line, "%f/10", &score); err == nil && score >= 0 && score <= 10 {
-				return score
-			}
-		}
-	}
-	return 0
 }
 
 func (s *CoachService) buildSystemPrompt() string {

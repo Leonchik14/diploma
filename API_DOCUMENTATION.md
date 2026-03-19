@@ -172,6 +172,7 @@
 | `GetResumeSession` | Получение сессии парсинга резюме |
 | `PrepareForVacancy` | Рекомендации по подготовке к вакансии (по ID с HH) |
 | `ReviewResume` | Оценка резюме + рекомендации по улучшению |
+| `GetCoachChatHistory` | Единая лента: чат Ask + вызовы ReviewResume и PrepareForVacancy |
 | `ClearChatHistory` | Удаление истории чата с коучом |
 
 ### Ask
@@ -208,9 +209,19 @@
 - **Response:** `ReviewResumeResponse` — `score` (0–10), `recommendations` (текст с оценкой и рекомендациями по улучшению).
 - Анализирует текущее резюме пользователя (ResumeProfile) и даёт оценку с советами.
 
+### GetCoachChatHistory
+
+- **Request:** `GetCoachChatHistoryRequest` — `page_size` (по умолчанию 50, макс. 200), `page_offset` (смещение для пагинации).
+- **Response:** `GetCoachChatHistoryResponse` — `entries[]`, `total_count` (всего записей до пагинации).
+- Записи отсортированы **от новых к старым**. Тип записи — `kind`:
+  - `COACH_HISTORY_ENTRY_KIND_ASK_USER` / `ASK_ASSISTANT` — сообщения из чата (`conversation_id`, `content`, `created_at`);
+  - `COACH_HISTORY_ENTRY_KIND_REVIEW_RESUME` — анализ резюме (`content` = текст ответа, опционально `resume_score`);
+  - `COACH_HISTORY_ENTRY_KIND_PREPARE_VACANCY` — подготовка к вакансии (`content`, опционально `vacancy_id`).
+- **gRPC (gateway):** `GetCoachChatHistory` — тот же JWT, что и у остальных методов Coach.
+
 ### ClearChatHistory
 
-- **Request:** `ClearChatHistoryRequest` — опционально `conversation_id`. Если **не передавать** (или пустая строка) — удаляются **все** диалоги пользователя; если указан UUID диалога — удаляется только он.
+- **Request:** `ClearChatHistoryRequest` — опционально `conversation_id`. Если **не передавать** (или пустая строка) — удаляются **все** диалоги пользователя **и** записи ReviewResume/PrepareForVacancy из ленты; если указан UUID диалога — удаляется только этот диалог (события review/prepare не трогаются).
 - **Response:** `ClearChatHistoryResponse` — `ok`, `deleted_conversations` (сколько строк удалено в БД).
 
 ---
