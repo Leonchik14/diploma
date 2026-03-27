@@ -82,6 +82,20 @@ services:
       retries: 3
       start_period: 10s
 
+  # TLS: nginx + certbot — см. HTTPS.md. В NGINX_TLS_CERT_DIR должны быть fullchain.pem и privkey.pem (cp -L из /etc/letsencrypt/live/<домен>/).
+  # Запуск: docker compose --profile tls up -d
+  nginx-grpc:
+    profiles: ["tls"]
+    image: nginx:alpine
+    container_name: diploma-nginx-grpc
+    ports:
+      - "${NGINX_GRPC_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/grpc-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${NGINX_TLS_CERT_DIR:-./certs}:/etc/nginx/certs:ro
+    depends_on:
+      - api-gateway
+
   grpcui:
     image: fullstorydev/grpcui:latest
     container_name: diploma-grpcui

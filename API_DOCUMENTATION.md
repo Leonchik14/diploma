@@ -171,6 +171,7 @@
 | `AnswerResume` | Ответы на уточняющие вопросы по резюме |
 | `GetResumeSession` | Получение сессии парсинга резюме |
 | `PrepareForVacancy` | Рекомендации по подготовке к вакансии (по ID с HH) |
+| `UploadAndParseResume` | Загрузка файла резюме и создание сессии парсинга |
 | `ReviewResume` | Оценка резюме + рекомендации по улучшению |
 | `GetCoachChatHistory` | Единая лента: чат Ask + вызовы ReviewResume и PrepareForVacancy |
 | `ClearChatHistory` | Удаление истории чата с коучом |
@@ -186,6 +187,12 @@
 - **Request:** `ParseResumeRequest` — `material_id` (файл резюме из Materials).
 - **Response:** `ParseResumeResponse`  
   `session_id`, `draft` (ResumeProfileDraft), `questions[]` (id, text, type, options), `status`.
+
+### UploadAndParseResume
+
+- **Request:** `UploadAndParseResumeRequest` — `file_content` (bytes), `filename`.
+- **Response:** `UploadAndParseResumeResponse`  
+  `session_id`, `draft` (ResumeProfileDraft), `questions[]`, `status`.
 
 ### AnswerResume
 
