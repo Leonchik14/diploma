@@ -169,12 +169,17 @@ func (h *MaterialsHandler) DownloadFile(ctx context.Context, req *pbmaterials.Do
 	// Добавляем base64 версию для удобства передачи через gRPC
 	contentBase64 := base64.StdEncoding.EncodeToString(content)
 
+	if err := h.service.RecordFileInteractionByMaterialID(ctx, userID, req.MaterialId, "download"); err != nil {
+		h.logger.Error("failed to record file interaction", "error", err, "material_id", req.MaterialId)
+		return nil, status.Errorf(codes.Internal, "failed to record recent file interaction")
+	}
+
 	return &pbmaterials.DownloadFileResponse{
-		Content:        content,
-		Filename:       filename,
-		MimeType:       file.MimeType,
-		Size:           file.Size,
-		ContentBase64:  &contentBase64,
+		Content:       content,
+		Filename:      filename,
+		MimeType:      file.MimeType,
+		Size:          file.Size,
+		ContentBase64: &contentBase64,
 	}, nil
 }
 
@@ -202,6 +207,26 @@ func (h *MaterialsHandler) ListFolder(ctx context.Context, req *pbmaterials.List
 	}
 
 	return &pbmaterials.ListFolderResponse{Nodes: pbNodes}, nil
+}
+
+func (h *MaterialsHandler) RecentFiles(ctx context.Context, req *pbmaterials.RecentFilesRequest) (*pbmaterials.RecentFilesResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes, err := h.service.ListRecentFiles(ctx, userID)
+	if err != nil {
+		h.logger.Error("failed to list recent files", "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to list recent files: %v", err)
+	}
+
+	pbNodes := make([]*pbmaterials.Node, len(nodes))
+	for i := range nodes {
+		pbNodes[i] = convertNodeToProto(&nodes[i])
+	}
+
+	return &pbmaterials.RecentFilesResponse{Nodes: pbNodes}, nil
 }
 
 func (h *MaterialsHandler) CreateFolder(ctx context.Context, req *pbmaterials.CreateFolderRequest) (*pbmaterials.CreateFolderResponse, error) {

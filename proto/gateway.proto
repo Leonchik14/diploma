@@ -34,6 +34,7 @@ service BackendGateway {
   rpc UploadFile(materials.UploadFileRequest) returns (materials.UploadFileResponse);
   rpc DownloadFile(materials.DownloadFileRequest) returns (materials.DownloadFileResponse);
   rpc ListFolder(materials.ListFolderRequest) returns (materials.ListFolderResponse);
+  rpc RecentFiles(materials.RecentFilesRequest) returns (materials.RecentFilesResponse);
   rpc CreateFolder(materials.CreateFolderRequest) returns (materials.CreateFolderResponse);
   rpc CreateLink(materials.CreateLinkRequest) returns (materials.CreateLinkResponse);
   rpc RenameNode(materials.RenameNodeRequest) returns (materials.RenameNodeResponse);
@@ -48,6 +49,7 @@ service BackendGateway {
   rpc PrepareForVacancy(coach.PrepareForVacancyRequest) returns (coach.PrepareForVacancyResponse);
   rpc ReviewResume(coach.ReviewResumeRequest) returns (coach.ReviewResumeResponse);
   rpc ClearChatHistory(coach.ClearChatHistoryRequest) returns (coach.ClearChatHistoryResponse);
+  rpc AddChatMessage(coach.AddChatMessageRequest) returns (coach.AddChatMessageResponse);
   rpc GetCoachChatHistory(coach.GetCoachChatHistoryRequest) returns (coach.GetCoachChatHistoryResponse);
   
   // Jobs

@@ -21,14 +21,14 @@ import (
 
 type GatewayProxy struct {
 	pbgateway.UnimplementedBackendGatewayServer
-	cfg     *config.Config
-	logger  *slog.Logger
-	authClient    pbauth.AuthServiceClient
-	userClient    pbuser.UserServiceClient
+	cfg             *config.Config
+	logger          *slog.Logger
+	authClient      pbauth.AuthServiceClient
+	userClient      pbuser.UserServiceClient
 	materialsClient pbmaterials.MaterialsServiceClient
-	coachClient   pbcoach.CoachServiceClient
-	jobsClient    pbjobs.JobsServiceClient
-	calendarClient pbcalendar.CalendarServiceClient
+	coachClient     pbcoach.CoachServiceClient
+	jobsClient      pbjobs.JobsServiceClient
+	calendarClient  pbcalendar.CalendarServiceClient
 }
 
 func NewGatewayProxy(cfg *config.Config, logger *slog.Logger) *GatewayProxy {
@@ -40,14 +40,14 @@ func NewGatewayProxy(cfg *config.Config, logger *slog.Logger) *GatewayProxy {
 	calendarConn := dial(cfg.CalendarServiceURL)
 
 	return &GatewayProxy{
-		cfg:     cfg,
-		logger:  logger,
-		authClient:    pbauth.NewAuthServiceClient(authConn),
-		userClient:    pbuser.NewUserServiceClient(userConn),
+		cfg:             cfg,
+		logger:          logger,
+		authClient:      pbauth.NewAuthServiceClient(authConn),
+		userClient:      pbuser.NewUserServiceClient(userConn),
 		materialsClient: pbmaterials.NewMaterialsServiceClient(materialsConn),
-		coachClient:   pbcoach.NewCoachServiceClient(coachConn),
-		jobsClient:    pbjobs.NewJobsServiceClient(jobsConn),
-		calendarClient: pbcalendar.NewCalendarServiceClient(calendarConn),
+		coachClient:     pbcoach.NewCoachServiceClient(coachConn),
+		jobsClient:      pbjobs.NewJobsServiceClient(jobsConn),
+		calendarClient:  pbcalendar.NewCalendarServiceClient(calendarConn),
 	}
 }
 
@@ -142,6 +142,10 @@ func (p *GatewayProxy) ListFolder(ctx context.Context, req *pbmaterials.ListFold
 	return p.materialsClient.ListFolder(p.forwardMetadata(ctx), req)
 }
 
+func (p *GatewayProxy) RecentFiles(ctx context.Context, req *pbmaterials.RecentFilesRequest) (*pbmaterials.RecentFilesResponse, error) {
+	return p.materialsClient.RecentFiles(p.forwardMetadata(ctx), req)
+}
+
 func (p *GatewayProxy) CreateFolder(ctx context.Context, req *pbmaterials.CreateFolderRequest) (*pbmaterials.CreateFolderResponse, error) {
 	return p.materialsClient.CreateFolder(p.forwardMetadata(ctx), req)
 }
@@ -189,6 +193,10 @@ func (p *GatewayProxy) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 
 func (p *GatewayProxy) ClearChatHistory(ctx context.Context, req *pbcoach.ClearChatHistoryRequest) (*pbcoach.ClearChatHistoryResponse, error) {
 	return p.coachClient.ClearChatHistory(p.forwardMetadata(ctx), req)
+}
+
+func (p *GatewayProxy) AddChatMessage(ctx context.Context, req *pbcoach.AddChatMessageRequest) (*pbcoach.AddChatMessageResponse, error) {
+	return p.coachClient.AddChatMessage(p.forwardMetadata(ctx), req)
 }
 
 func (p *GatewayProxy) GetCoachChatHistory(ctx context.Context, req *pbcoach.GetCoachChatHistoryRequest) (*pbcoach.GetCoachChatHistoryResponse, error) {

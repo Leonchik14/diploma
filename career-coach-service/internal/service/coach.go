@@ -96,6 +96,21 @@ func (s *CoachService) Ask(ctx context.Context, userID uint, req *model.AskReque
 	}, nil
 }
 
+func (s *CoachService) AddChatMessage(ctx context.Context, userID uint, req *model.AddChatMessageRequest) (*model.AddChatMessageResponse, error) {
+	conversationID, err := s.repo.GetOrCreateConversation(ctx, req.ConversationID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get/create conversation: %w", err)
+	}
+
+	if err := s.repo.AddMessageToConversation(ctx, conversationID, userID, req.Role, req.Content, s.chatHistoryLimit); err != nil {
+		return nil, fmt.Errorf("failed to save chat message: %w", err)
+	}
+
+	return &model.AddChatMessageResponse{
+		ConversationID: conversationID,
+	}, nil
+}
+
 func (s *CoachService) ClearChatHistory(ctx context.Context, userID uint, conversationID string) (deleted int64, err error) {
 	deleted, err = s.repo.DeleteChatHistory(ctx, userID, conversationID)
 	if err != nil {
@@ -197,7 +212,7 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 }
 
 const (
-	maxCoachHistoryPage = 200
+	maxCoachHistoryPage     = 200
 	defaultCoachHistoryPage = 50
 )
 

@@ -16,12 +16,24 @@ type AskResponse struct {
 	Answer         string `json:"answer"`
 }
 
+// AddChatMessageRequest appends a message to a chat conversation.
+type AddChatMessageRequest struct {
+	ConversationID string `json:"conversation_id,omitempty"`
+	Content        string `json:"content"`
+	Role           string `json:"role"`
+}
+
+// AddChatMessageResponse returns the resolved conversation identifier.
+type AddChatMessageResponse struct {
+	ConversationID string `json:"conversation_id"`
+}
+
 // ResumeProfile represents user's resume information
 type ResumeProfile struct {
-	Role             string    `json:"role,omitempty"`
-	Experience       string    `json:"experience,omitempty"`
-	Skills           []string  `json:"skills,omitempty"`
-	Location         string    `json:"location,omitempty"`
+	Role              string   `json:"role,omitempty"`
+	Experience        string   `json:"experience,omitempty"`
+	Skills            []string `json:"skills,omitempty"`
+	Location          string   `json:"location,omitempty"`
 	SalaryExpectation *float64 `json:"salary_expectation,omitempty"`
 }
 
@@ -39,15 +51,15 @@ type ResumeParseRequest struct {
 
 // ResumeParseResponse represents response from resume parsing
 type ResumeParseResponse struct {
-	SessionID string                 `json:"session_id"`
-	Draft     *ResumeProfileDraft    `json:"draft"`
-	Questions []Question             `json:"questions"`
-	Status    string                 `json:"status"`
+	SessionID string              `json:"session_id"`
+	Draft     *ResumeProfileDraft `json:"draft"`
+	Questions []Question          `json:"questions"`
+	Status    string              `json:"status"`
 }
 
 // ResumeAnswerRequest represents request to answer questions
 type ResumeAnswerRequest struct {
-	SessionID string          `json:"session_id"`
+	SessionID string           `json:"session_id"`
 	Answers   []QuestionAnswer `json:"answers"`
 }
 
@@ -79,16 +91,16 @@ type ResumeSessionResponse struct {
 
 // ResumeProfileDraft represents draft resume profile
 type ResumeProfileDraft struct {
-	TargetRoles              []string                    `json:"target_roles"`
+	TargetRoles                []string                    `json:"target_roles"`
 	ProfessionalRoleCandidates []ProfessionalRoleCandidate `json:"professional_role_candidates"`
-	ExperienceLevel          *string                     `json:"experience_level"`
-	Areas                    []Area                     `json:"areas"`
-	SalaryMin                *float64                   `json:"salary_min"`
-	Currency                 *string                    `json:"currency"`
-	WorkFormat               []string                   `json:"work_format"`
-	SkillsTop                []string                   `json:"skills_top"`
-	Notes                    *string                    `json:"notes"`
-	Confidence               map[string]float64         `json:"confidence"`
+	ExperienceLevel            *string                     `json:"experience_level"`
+	Areas                      []Area                      `json:"areas"`
+	SalaryMin                  *float64                    `json:"salary_min"`
+	Currency                   *string                     `json:"currency"`
+	WorkFormat                 []string                    `json:"work_format"`
+	SkillsTop                  []string                    `json:"skills_top"`
+	Notes                      *string                     `json:"notes"`
+	Confidence                 map[string]float64          `json:"confidence"`
 }
 
 // ProfessionalRoleCandidate represents a candidate role

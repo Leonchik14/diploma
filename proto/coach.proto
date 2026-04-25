@@ -144,6 +144,22 @@ message ClearChatHistoryResponse {
   int32 deleted_conversations = 2;
 }
 
+enum ChatMessageOwner {
+  CHAT_MESSAGE_OWNER_UNSPECIFIED = 0;
+  CHAT_MESSAGE_OWNER_USER = 1;
+  CHAT_MESSAGE_OWNER_ASSISTANT = 2;
+}
+
+message AddChatMessageRequest {
+  optional string conversation_id = 1;
+  string content = 2;
+  ChatMessageOwner owner = 3;
+}
+
+message AddChatMessageResponse {
+  string conversation_id = 1;
+}
+
 // Единая лента: вопросы Ask, ответы коуча, анализ резюме, подготовка к вакансии.
 enum CoachHistoryEntryKind {
   COACH_HISTORY_ENTRY_KIND_UNSPECIFIED = 0;
@@ -181,6 +197,7 @@ service CoachService {
   rpc PrepareForVacancy(PrepareForVacancyRequest) returns (PrepareForVacancyResponse);
   rpc ReviewResume(ReviewResumeRequest) returns (ReviewResumeResponse);
   rpc ClearChatHistory(ClearChatHistoryRequest) returns (ClearChatHistoryResponse);
+  rpc AddChatMessage(AddChatMessageRequest) returns (AddChatMessageResponse);
   rpc GetCoachChatHistory(GetCoachChatHistoryRequest) returns (GetCoachChatHistoryResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

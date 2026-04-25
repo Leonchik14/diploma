@@ -67,6 +67,12 @@ message ListFolderResponse {
   repeated Node nodes = 1;
 }
 
+message RecentFilesRequest {}
+
+message RecentFilesResponse {
+  repeated Node nodes = 1;
+}
+
 message CreateFolderRequest {
   string name = 1;
   optional uint32 parent_id = 2;
@@ -117,6 +123,7 @@ service MaterialsService {
   rpc UploadFile(UploadFileRequest) returns (UploadFileResponse);
   rpc DownloadFile(DownloadFileRequest) returns (DownloadFileResponse);
   rpc ListFolder(ListFolderRequest) returns (ListFolderResponse);
+  rpc RecentFiles(RecentFilesRequest) returns (RecentFilesResponse);
   rpc CreateFolder(CreateFolderRequest) returns (CreateFolderResponse);
   rpc CreateLink(CreateLinkRequest) returns (CreateLinkResponse);
   rpc RenameNode(RenameNodeRequest) returns (RenameNodeResponse);

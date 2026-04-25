@@ -14,12 +14,14 @@ func setupTestDB(t *testing.T) {
 		t.Skipf("Skipping test: database not available: %v", err)
 	}
 	// Clean up test data
+	database.DB.Exec(context.Background(), "TRUNCATE TABLE file_interactions CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE nodes CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE files CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE links CASCADE")
 }
 
 func teardownTestDB(t *testing.T) {
+	database.DB.Exec(context.Background(), "TRUNCATE TABLE file_interactions CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE nodes CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE files CASCADE")
 	database.DB.Exec(context.Background(), "TRUNCATE TABLE links CASCADE")
@@ -35,7 +37,7 @@ func TestCheckNameExists_UniqueInParent(t *testing.T) {
 	var parentID *uint = nil // Root level
 
 	// Create first folder
-	node1, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "folder1")
+	node1, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "folder1", false)
 	if err != nil {
 		t.Fatalf("Failed to create first node: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestCheckNameExists_UniqueAcrossTypes(t *testing.T) {
 	var parentID *uint = nil
 
 	// Create a folder with name "test"
-	_, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "test")
+	_, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "test", false)
 	if err != nil {
 		t.Fatalf("Failed to create folder: %v", err)
 	}
@@ -116,31 +118,31 @@ func TestSoftDeleteNode_Recursive(t *testing.T) {
 	//       link1
 
 	// Create root folder
-	rootFolder, err := repo.CreateNode(ctx, userID, rootParentID, models.NodeTypeFolder, "root")
+	rootFolder, err := repo.CreateNode(ctx, userID, rootParentID, models.NodeTypeFolder, "root", false)
 	if err != nil {
 		t.Fatalf("Failed to create root folder: %v", err)
 	}
 
 	// Create folder1 inside root
-	folder1, err := repo.CreateNode(ctx, userID, &rootFolder.ID, models.NodeTypeFolder, "folder1")
+	folder1, err := repo.CreateNode(ctx, userID, &rootFolder.ID, models.NodeTypeFolder, "folder1", false)
 	if err != nil {
 		t.Fatalf("Failed to create folder1: %v", err)
 	}
 
 	// Create file1 inside folder1
-	file1, err := repo.CreateNode(ctx, userID, &folder1.ID, models.NodeTypeFile, "file1")
+	file1, err := repo.CreateNode(ctx, userID, &folder1.ID, models.NodeTypeFile, "file1", false)
 	if err != nil {
 		t.Fatalf("Failed to create file1: %v", err)
 	}
 
 	// Create folder2 inside folder1
-	folder2, err := repo.CreateNode(ctx, userID, &folder1.ID, models.NodeTypeFolder, "folder2")
+	folder2, err := repo.CreateNode(ctx, userID, &folder1.ID, models.NodeTypeFolder, "folder2", false)
 	if err != nil {
 		t.Fatalf("Failed to create folder2: %v", err)
 	}
 
 	// Create link1 inside folder2
-	link1, err := repo.CreateNode(ctx, userID, &folder2.ID, models.NodeTypeLink, "link1")
+	link1, err := repo.CreateNode(ctx, userID, &folder2.ID, models.NodeTypeLink, "link1", false)
 	if err != nil {
 		t.Fatalf("Failed to create link1: %v", err)
 	}
@@ -219,7 +221,7 @@ func TestGetNodeByID_DeletedNodesHidden(t *testing.T) {
 	var parentID *uint = nil
 
 	// Create a node
-	node, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "test")
+	node, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "test", false)
 	if err != nil {
 		t.Fatalf("Failed to create node: %v", err)
 	}
@@ -253,8 +255,8 @@ func TestListChildren_DeletedNodesHidden(t *testing.T) {
 	var parentID *uint = nil
 
 	// Create nodes
-	node1, _ := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "node1")
-	node2, _ := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "node2")
+	node1, _ := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "node1", false)
+	node2, _ := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFolder, "node2", false)
 
 	// List children - should see both
 	children, err := repo.ListChildren(ctx, userID, parentID)
@@ -278,5 +280,50 @@ func TestListChildren_DeletedNodesHidden(t *testing.T) {
 	}
 	if children[0].ID != node2.ID {
 		t.Errorf("Expected node2, got node %d", children[0].ID)
+	}
+}
+
+func TestListRecentFiles_ReturnsLastFiveUniqueFiles(t *testing.T) {
+	setupTestDB(t)
+	defer teardownTestDB(t)
+
+	repo := NewRepository()
+	ctx := context.Background()
+	userID := uint(1)
+	var parentID *uint
+
+	var fileIDs []uint
+	for i := 0; i < 6; i++ {
+		name := "file" + string(rune('A'+i))
+		node, err := repo.CreateNode(ctx, userID, parentID, models.NodeTypeFile, name, false)
+		if err != nil {
+			t.Fatalf("Failed to create file node %s: %v", name, err)
+		}
+		if err := repo.CreateFile(ctx, node.ID, name, "text/plain", int64(i+1), name); err != nil {
+			t.Fatalf("Failed to create file metadata %s: %v", name, err)
+		}
+		fileIDs = append(fileIDs, node.ID)
+	}
+
+	for _, nodeID := range []uint{fileIDs[0], fileIDs[1], fileIDs[2], fileIDs[3], fileIDs[4], fileIDs[5], fileIDs[2], fileIDs[4]} {
+		if err := repo.RecordFileInteraction(ctx, userID, nodeID, "download"); err != nil {
+			t.Fatalf("Failed to record interaction for node %d: %v", nodeID, err)
+		}
+	}
+
+	nodes, err := repo.ListRecentFiles(ctx, userID, 5)
+	if err != nil {
+		t.Fatalf("Failed to list recent files: %v", err)
+	}
+
+	if len(nodes) != 5 {
+		t.Fatalf("Expected 5 recent files, got %d", len(nodes))
+	}
+
+	expectedOrder := []uint{fileIDs[4], fileIDs[2], fileIDs[5], fileIDs[3], fileIDs[1]}
+	for i, expectedID := range expectedOrder {
+		if nodes[i].ID != expectedID {
+			t.Fatalf("Expected node %d at position %d, got %d", expectedID, i, nodes[i].ID)
+		}
 	}
 }

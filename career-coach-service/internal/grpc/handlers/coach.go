@@ -230,8 +230,48 @@ func (h *CoachHandler) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 	}
 
 	return &pbcoach.ReviewResumeResponse{
-		Score:          score,
+		Score:           score,
 		Recommendations: recommendations,
+	}, nil
+}
+
+func (h *CoachHandler) AddChatMessage(ctx context.Context, req *pbcoach.AddChatMessageRequest) (*pbcoach.AddChatMessageResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "content is required")
+	}
+
+	role := ""
+	switch req.Owner {
+	case pbcoach.ChatMessageOwner_CHAT_MESSAGE_OWNER_USER:
+		role = "user"
+	case pbcoach.ChatMessageOwner_CHAT_MESSAGE_OWNER_ASSISTANT:
+		role = "assistant"
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "owner must be user or assistant")
+	}
+
+	addReq := &model.AddChatMessageRequest{
+		Content: content,
+		Role:    role,
+	}
+	if req.ConversationId != nil {
+		addReq.ConversationID = strings.TrimSpace(*req.ConversationId)
+	}
+
+	resp, err := h.coachService.AddChatMessage(ctx, userID, addReq)
+	if err != nil {
+		h.logger.Error("failed to add chat message", "error", err, "user_id", userID)
+		return nil, status.Errorf(codes.Internal, "failed to add chat message")
+	}
+
+	return &pbcoach.AddChatMessageResponse{
+		ConversationId: resp.ConversationID,
 	}, nil
 }
 
@@ -263,8 +303,8 @@ func (h *CoachHandler) GetCoachChatHistory(ctx context.Context, req *pbcoach.Get
 		out = append(out, pb)
 	}
 	return &pbcoach.GetCoachChatHistoryResponse{
-		Entries:     out,
-		TotalCount:  int32(total),
+		Entries:    out,
+		TotalCount: int32(total),
 	}, nil
 }
 

@@ -37,6 +37,15 @@ type File struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// FileInteraction represents a user interaction with a file.
+type FileInteraction struct {
+	ID              uint      `json:"id" db:"id"`
+	UserID          uint      `json:"user_id" db:"user_id"`
+	NodeID          uint      `json:"node_id" db:"node_id"`
+	InteractionType string    `json:"interaction_type" db:"interaction_type"`
+	InteractedAt    time.Time `json:"interacted_at" db:"interacted_at"`
+}
+
 // Link represents link metadata
 type Link struct {
 	NodeID      uint      `json:"node_id" db:"node_id"`
@@ -61,7 +70,7 @@ type CreateFolderRequest struct {
 
 // CreateFileRequest represents request to create a file
 type CreateFileRequest struct {
-	ParentID *uint `json:"parent_id" binding:"omitempty"`
+	ParentID *uint  `json:"parent_id" binding:"omitempty"`
 	Name     string `json:"name" binding:"required,min=1,max=255"`
 	// File content is uploaded as multipart/form-data
 }

@@ -18,6 +18,8 @@ type Service struct {
 	storage *storage.Storage
 }
 
+const recentFilesLimit = 5
+
 func NewService(repo *repository.Repository, storage *storage.Storage) *Service {
 	return &Service{
 		repo:    repo,
@@ -97,6 +99,10 @@ func (s *Service) CreateFile(ctx context.Context, userID uint, parentID *uint, n
 		return nil, fmt.Errorf("failed to create file metadata: %w", err)
 	}
 
+	if err := s.repo.RecordFileInteraction(ctx, userID, node.ID, "upload"); err != nil {
+		return nil, fmt.Errorf("failed to record file interaction: %w", err)
+	}
+
 	return node, nil
 }
 
@@ -164,6 +170,26 @@ func (s *Service) ListChildren(ctx context.Context, userID uint, parentID *uint)
 	return result, nil
 }
 
+// ListRecentFiles returns up to 5 recently interacted files ordered by latest interaction.
+func (s *Service) ListRecentFiles(ctx context.Context, userID uint) ([]models.NodeWithDetails, error) {
+	nodes, err := s.repo.ListRecentFiles(ctx, userID, recentFilesLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]models.NodeWithDetails, 0, len(nodes))
+	for _, node := range nodes {
+		nodeWithDetails := models.NodeWithDetails{Node: node}
+		file, err := s.repo.GetFile(ctx, node.ID)
+		if err == nil {
+			nodeWithDetails.File = file
+		}
+		result = append(result, nodeWithDetails)
+	}
+
+	return result, nil
+}
+
 // GetNode retrieves a node with its details
 func (s *Service) GetNode(ctx context.Context, userID, nodeID uint) (*models.NodeWithDetails, error) {
 	node, err := s.repo.GetNodeByID(ctx, userID, nodeID)
@@ -194,6 +220,32 @@ func (s *Service) GetNodeByMaterialID(ctx context.Context, userID uint, material
 	return s.repo.GetNodeByMaterialID(ctx, userID, materialID)
 }
 
+// RecordFileInteractionByNode records an interaction if the node is an active file.
+func (s *Service) RecordFileInteractionByNode(ctx context.Context, userID, nodeID uint, interactionType string) error {
+	nodeType, err := s.repo.GetNodeTypeForUser(ctx, userID, nodeID)
+	if err != nil {
+		return err
+	}
+	if nodeType != models.NodeTypeFile {
+		return nil
+	}
+
+	return s.repo.RecordFileInteraction(ctx, userID, nodeID, interactionType)
+}
+
+// RecordFileInteractionByMaterialID records an interaction for a file resolved by material_id.
+func (s *Service) RecordFileInteractionByMaterialID(ctx context.Context, userID uint, materialID, interactionType string) error {
+	node, err := s.repo.GetNodeByMaterialID(ctx, userID, materialID)
+	if err != nil {
+		return err
+	}
+	if node.Type != models.NodeTypeFile {
+		return nil
+	}
+
+	return s.repo.RecordFileInteraction(ctx, userID, node.ID, interactionType)
+}
+
 // UpdateNodeName updates node name
 func (s *Service) UpdateNodeName(ctx context.Context, userID, nodeID uint, name string) error {
 	node, err := s.repo.GetNodeByID(ctx, userID, nodeID)
@@ -211,7 +263,17 @@ func (s *Service) UpdateNodeName(ctx context.Context, userID, nodeID uint, name 
 		return fmt.Errorf("name already exists in this folder")
 	}
 
-	return s.repo.UpdateNodeName(ctx, userID, nodeID, name)
+	if err := s.repo.UpdateNodeName(ctx, userID, nodeID, name); err != nil {
+		return err
+	}
+
+	if node.Type == models.NodeTypeFile {
+		if err := s.repo.RecordFileInteraction(ctx, userID, nodeID, "rename"); err != nil {
+			return fmt.Errorf("failed to record file interaction: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // UpdateFile updates file content and metadata
@@ -306,6 +368,17 @@ func (s *Service) UpdateLink(ctx context.Context, userID, nodeID uint, name, url
 
 // DeleteNode performs recursive soft delete
 func (s *Service) DeleteNode(ctx context.Context, userID, nodeID uint) error {
+	node, err := s.repo.GetNodeByID(ctx, userID, nodeID)
+	if err != nil {
+		return err
+	}
+
+	if node.Type == models.NodeTypeFile {
+		if err := s.repo.RecordFileInteraction(ctx, userID, nodeID, "delete"); err != nil {
+			return fmt.Errorf("failed to record file interaction: %w", err)
+		}
+	}
+
 	return s.repo.SoftDeleteNode(ctx, userID, nodeID)
 }
 

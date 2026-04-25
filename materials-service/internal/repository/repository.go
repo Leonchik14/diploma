@@ -37,6 +37,22 @@ func (r *Repository) GetNodeByIDWithoutUserCheck(ctx context.Context, nodeID uin
 	return &node, nil
 }
 
+// GetNodeTypeForUser returns the node type for a user-owned active node.
+func (r *Repository) GetNodeTypeForUser(ctx context.Context, userID, nodeID uint) (models.NodeType, error) {
+	var nodeType models.NodeType
+	err := database.DB.QueryRow(ctx,
+		`SELECT type FROM nodes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		nodeID, userID).Scan(&nodeType)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("node not found")
+		}
+		return "", err
+	}
+
+	return nodeType, nil
+}
+
 // GetNodeByID retrieves a node by ID (must belong to user)
 func (r *Repository) GetNodeByID(ctx context.Context, userID, nodeID uint) (*models.Node, error) {
 	var node models.Node
@@ -94,6 +110,52 @@ func (r *Repository) ListChildren(ctx context.Context, userID uint, parentID *ui
 			userID, *parentID)
 	}
 
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []models.Node
+	for rows.Next() {
+		var node models.Node
+		if err := rows.Scan(
+			&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
+			&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+
+	return nodes, rows.Err()
+}
+
+// RecordFileInteraction stores a user interaction with a file node.
+func (r *Repository) RecordFileInteraction(ctx context.Context, userID, nodeID uint, interactionType string) error {
+	_, err := database.DB.Exec(ctx,
+		`INSERT INTO file_interactions (user_id, node_id, interaction_type) VALUES ($1, $2, $3)`,
+		userID, nodeID, interactionType)
+	return err
+}
+
+// ListRecentFiles returns up to limit unique active file nodes ordered by latest interaction.
+func (r *Repository) ListRecentFiles(ctx context.Context, userID uint, limit int) ([]models.Node, error) {
+	rows, err := database.DB.Query(ctx,
+		`SELECT n.id, n.material_id, n.user_id, n.parent_id, n.type, n.name, n.hidden, n.created_at, n.updated_at, n.deleted_at
+		 FROM nodes n
+		 JOIN (
+		     SELECT DISTINCT ON (fi.node_id) fi.node_id, fi.interacted_at, fi.id
+		     FROM file_interactions fi
+		     JOIN nodes n2 ON n2.id = fi.node_id
+		     WHERE fi.user_id = $1
+		       AND n2.user_id = $1
+		       AND n2.type = 'file'
+		       AND n2.deleted_at IS NULL
+		     ORDER BY fi.node_id, fi.interacted_at DESC, fi.id DESC
+		 ) latest ON latest.node_id = n.id
+		 WHERE n.deleted_at IS NULL
+		 ORDER BY latest.interacted_at DESC, latest.id DESC
+		 LIMIT $2`,
+		userID, limit)
 	if err != nil {
 		return nil, err
 	}

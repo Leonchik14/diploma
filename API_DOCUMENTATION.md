@@ -116,6 +116,7 @@
 | `UploadFile` | Загрузка файла |
 | `DownloadFile` | Скачивание по material_id |
 | `ListFolder` | Список узлов в папке |
+| `RecentFiles` | Последние 5 файлов, с которыми взаимодействовал пользователь |
 | `CreateFolder` | Создание папки |
 | `CreateLink` | Создание ссылки |
 | `RenameNode` | Переименование узла |
@@ -137,6 +138,11 @@
 
 - **Request:** `ListFolderRequest` — опционально `parent_id` (корень, если не задан).
 - **Response:** `ListFolderResponse` — `nodes[]` (Node: id, user_id, parent_id, type, name, file/link, created_at, updated_at, material_id).
+
+### RecentFiles
+
+- **Request:** `RecentFilesRequest` — без параметров.
+- **Response:** `RecentFilesResponse` — `nodes[]` с последними 5 уникальными файлами, упорядоченными по времени последнего взаимодействия пользователя.
 
 ### CreateFolder
 
@@ -173,6 +179,7 @@
 | `PrepareForVacancy` | Рекомендации по подготовке к вакансии (по ID с HH) |
 | `UploadAndParseResume` | Загрузка файла резюме и создание сессии парсинга |
 | `ReviewResume` | Оценка резюме + рекомендации по улучшению |
+| `AddChatMessage` | Добавление сообщения в историю чата от пользователя или ассистента |
 | `GetCoachChatHistory` | Единая лента: чат Ask + вызовы ReviewResume и PrepareForVacancy |
 | `ClearChatHistory` | Удаление истории чата с коучом |
 
@@ -215,6 +222,12 @@
 - **Request:** `ReviewResumeRequest` — пустой (используется профиль текущего пользователя).
 - **Response:** `ReviewResumeResponse` — `score` (0–10), `recommendations` (текст с оценкой и рекомендациями по улучшению).
 - Анализирует текущее резюме пользователя (ResumeProfile) и даёт оценку с советами.
+
+### AddChatMessage
+
+- **Request:** `AddChatMessageRequest` — опционально `conversation_id`, обязательно `content`, обязательно `owner` (`CHAT_MESSAGE_OWNER_USER` или `CHAT_MESSAGE_OWNER_ASSISTANT`).
+- **Response:** `AddChatMessageResponse` — `conversation_id`.
+- Если `conversation_id` не передан или не существует у пользователя, создаётся новый диалог. Сообщение сохраняется в ту же историю, что и сообщения `Ask`.
 
 ### GetCoachChatHistory
 
