@@ -135,6 +135,7 @@ services:
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
       GRPC_PORT: ${GRPC_PORT:-9091}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      MATERIALS_SERVICE_ADDR: ${MATERIALS_SERVICE_ADDR:-materials-service:9092}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -147,6 +148,8 @@ services:
       - "9091:9091"
     depends_on:
       postgres:
+        condition: service_healthy
+      materials-service:
         condition: service_healthy
       calendar-service:
         condition: service_healthy
