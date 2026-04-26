@@ -63,6 +63,7 @@ func (c *MaterialsClient) UploadUserProfilePhoto(ctx context.Context, userID uin
 		FileContent: content,
 		Filename:    filename,
 		Name:        stringPtr(fmt.Sprintf("user_%d_profile_photo", userID)),
+		Hidden:      true,
 	}
 
 	resp, err := c.client.UploadFile(ctx, req)
