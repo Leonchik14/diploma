@@ -127,6 +127,17 @@ func (h *UserHandler) UploadProfilePhoto(ctx context.Context, req *pbuser.Upload
 		return nil, status.Errorf(codes.Internal, "materials client not configured")
 	}
 
+	var previousMaterialID sql.NullString
+	err := database.DB.QueryRow(ctx,
+		"SELECT profile_photo_material_id FROM users WHERE id = $1",
+		userID).Scan(&previousMaterialID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, status.Errorf(codes.NotFound, "user not found")
+		}
+		return nil, status.Errorf(codes.Internal, "database error")
+	}
+
 	filename := strings.TrimSpace(req.Filename)
 	if filename == "" {
 		filename = "profile_photo"
@@ -144,6 +155,12 @@ func (h *UserHandler) UploadProfilePhoto(ctx context.Context, req *pbuser.Upload
 	if err != nil {
 		h.logger.Error("failed to save profile photo material id", "user_id", userID, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to save profile photo")
+	}
+
+	if previousMaterialID.Valid && strings.TrimSpace(previousMaterialID.String) != "" && previousMaterialID.String != materialID {
+		if err := h.materialsClient.DeleteFileByMaterialID(ctx, previousMaterialID.String, uint(userID)); err != nil {
+			h.logger.Warn("failed to delete previous profile photo from materials-service", "user_id", userID, "old_material_id", previousMaterialID.String, "error", err)
+		}
 	}
 
 	return &pbuser.UploadProfilePhotoResponse{Ok: true}, nil
@@ -232,12 +249,12 @@ func (h *UserHandler) GetResumeProfileInternal(ctx context.Context, req *pbuser.
 		return nil, err
 	}
 	return &pbuser.GetResumeProfileInternalResponse{
-		Profile:         resp.Profile,
-		Status:          resp.Status,
-		Version:         resp.Version,
+		Profile:          resp.Profile,
+		Status:           resp.Status,
+		Version:          resp.Version,
 		SourceMaterialId: resp.SourceMaterialId,
-		ConfirmedFields: resp.ConfirmedFields,
-		Confidence:      resp.Confidence,
+		ConfirmedFields:  resp.ConfirmedFields,
+		Confidence:       resp.Confidence,
 	}, nil
 }
 
@@ -259,9 +276,9 @@ func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint)
 	}
 
 	resp := &pbuser.GetResumeProfileResponse{
-		Profile:  pbProfile,
-		Status:   statusProto,
-		Version:  row.Version,
+		Profile:         pbProfile,
+		Status:          statusProto,
+		Version:         row.Version,
 		ConfirmedFields: row.ConfirmedFields,
 		Confidence:      row.Confidence,
 	}
@@ -273,9 +290,9 @@ func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint)
 
 func rowToProtoProfile(row *postgres.ResumeProfileRow) *pbuser.ResumeProfile {
 	p := &pbuser.ResumeProfile{
-		TargetRoles:  row.TargetRoles,
-		WorkFormat:   row.WorkFormat,
-		SkillsTop:    row.SkillsTop,
+		TargetRoles: row.TargetRoles,
+		WorkFormat:  row.WorkFormat,
+		SkillsTop:   row.SkillsTop,
 	}
 	if row.ExperienceLevel != nil {
 		p.ExperienceLevel = row.ExperienceLevel

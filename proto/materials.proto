@@ -111,6 +111,14 @@ message DeleteNodeResponse {
   bool success = 1;
 }
 
+message DeleteByMaterialIDRequest {
+  string material_id = 1;
+}
+
+message DeleteByMaterialIDResponse {
+  bool success = 1;
+}
+
 message DeleteUserDataRequest {
   uint32 user_id = 1;
 }
@@ -128,5 +136,6 @@ service MaterialsService {
   rpc CreateLink(CreateLinkRequest) returns (CreateLinkResponse);
   rpc RenameNode(RenameNodeRequest) returns (RenameNodeResponse);
   rpc DeleteNode(DeleteNodeRequest) returns (DeleteNodeResponse);
+  rpc DeleteByMaterialID(DeleteByMaterialIDRequest) returns (DeleteByMaterialIDResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (DeleteUserDataResponse);
 }

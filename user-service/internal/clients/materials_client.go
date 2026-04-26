@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -59,10 +60,12 @@ func (c *MaterialsClient) UploadUserProfilePhoto(ctx context.Context, userID uin
 		filename = "profile_photo"
 	}
 
+	uniqueName := fmt.Sprintf("user_%d_profile_photo_%d", userID, time.Now().UnixNano())
+
 	req := &pbmaterials.UploadFileRequest{
 		FileContent: content,
 		Filename:    filename,
-		Name:        stringPtr(fmt.Sprintf("user_%d_profile_photo", userID)),
+		Name:        stringPtr(uniqueName),
 		Hidden:      true,
 	}
 
@@ -87,6 +90,23 @@ func (c *MaterialsClient) DownloadFile(ctx context.Context, materialID string, u
 	return c.client.DownloadFile(ctx, &pbmaterials.DownloadFileRequest{
 		MaterialId: materialID,
 	})
+}
+
+func (c *MaterialsClient) DeleteFileByMaterialID(ctx context.Context, materialID string, userID uint) error {
+	if c == nil {
+		return fmt.Errorf("materials client is not initialized")
+	}
+
+	md := metadata.Pairs(
+		"x-internal-api-key", c.internalKey,
+		"x-user-id", fmt.Sprintf("%d", userID),
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	_, err := c.client.DeleteByMaterialID(ctx, &pbmaterials.DeleteByMaterialIDRequest{
+		MaterialId: materialID,
+	})
+	return err
 }
 
 func stringPtr(s string) *string { return &s }

@@ -382,6 +382,16 @@ func (s *Service) DeleteNode(ctx context.Context, userID, nodeID uint) error {
 	return s.repo.SoftDeleteNode(ctx, userID, nodeID)
 }
 
+// DeleteByMaterialID deletes a file or node resolved by material_id for the user.
+func (s *Service) DeleteByMaterialID(ctx context.Context, userID uint, materialID string) error {
+	node, err := s.repo.GetNodeByMaterialID(ctx, userID, materialID)
+	if err != nil {
+		return err
+	}
+
+	return s.DeleteNode(ctx, userID, node.ID)
+}
+
 // GetFileDownloadURL generates a presigned URL for file download
 func (s *Service) GetFileDownloadURL(ctx context.Context, userID, nodeID uint) (string, error) {
 	node, err := s.repo.GetNodeByID(ctx, userID, nodeID)

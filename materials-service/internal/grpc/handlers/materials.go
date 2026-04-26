@@ -341,6 +341,24 @@ func (h *MaterialsHandler) DeleteNode(ctx context.Context, req *pbmaterials.Dele
 	return &pbmaterials.DeleteNodeResponse{Success: true}, nil
 }
 
+func (h *MaterialsHandler) DeleteByMaterialID(ctx context.Context, req *pbmaterials.DeleteByMaterialIDRequest) (*pbmaterials.DeleteByMaterialIDResponse, error) {
+	userID, err := h.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.MaterialId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "material_id is required")
+	}
+
+	if err := h.service.DeleteByMaterialID(ctx, userID, req.MaterialId); err != nil {
+		h.logger.Error("failed to delete node by material_id", "error", err, "user_id", userID, "material_id", req.MaterialId)
+		return nil, status.Errorf(codes.Internal, "failed to delete node by material_id: %v", err)
+	}
+
+	return &pbmaterials.DeleteByMaterialIDResponse{Success: true}, nil
+}
+
 func (h *MaterialsHandler) DeleteUserData(ctx context.Context, req *pbmaterials.DeleteUserDataRequest) (*pbmaterials.DeleteUserDataResponse, error) {
 	userID := uint(req.UserId)
 
