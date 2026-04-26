@@ -149,10 +149,12 @@ func (r *Repository) ListRecentFiles(ctx context.Context, userID uint, limit int
 		     WHERE fi.user_id = $1
 		       AND n2.user_id = $1
 		       AND n2.type = 'file'
+		       AND n2.hidden = FALSE
 		       AND n2.deleted_at IS NULL
 		     ORDER BY fi.node_id, fi.interacted_at DESC, fi.id DESC
 		 ) latest ON latest.node_id = n.id
 		 WHERE n.deleted_at IS NULL
+		   AND n.hidden = FALSE
 		 ORDER BY latest.interacted_at DESC, latest.id DESC
 		 LIMIT $2`,
 		userID, limit)
