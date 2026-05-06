@@ -74,6 +74,22 @@ func (c *MaterialsClient) DownloadFile(ctx context.Context, materialID string, u
 	return reader, resp.MimeType, nil
 }
 
+func (c *MaterialsClient) DeleteByMaterialID(ctx context.Context, materialID string, userID uint) error {
+	md := metadata.New(map[string]string{
+		"x-internal-api-key": c.internalKey,
+		"x-user-id":          fmt.Sprintf("%d", userID),
+	})
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	if _, err := c.client.DeleteByMaterialID(ctx, &pbmaterials.DeleteByMaterialIDRequest{
+		MaterialId: materialID,
+	}); err != nil {
+		return fmt.Errorf("failed to delete file by material id: %w", err)
+	}
+
+	return nil
+}
+
 func (c *MaterialsClient) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()

@@ -105,7 +105,7 @@ func (s *ResumeService) ParseResume(ctx context.Context, userID uint, materialID
 }
 
 func (s *ResumeService) UploadAndParseResume(ctx context.Context, userID uint, fileContent []byte, filename string) (*model.ResumeParseResponse, error) {
-	materialID, err := s.materialsClient.UploadFile(ctx, fileContent, filename, userID, true)
+	materialID, err := s.uploadResumeWithOverwrite(ctx, userID, fileContent, filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload resume file: %w", err)
 	}
@@ -154,6 +154,33 @@ func (s *ResumeService) UploadAndParseResume(ctx context.Context, userID uint, f
 		Questions: questions,
 		Status:    "awaiting_user",
 	}, nil
+}
+
+func (s *ResumeService) uploadResumeWithOverwrite(ctx context.Context, userID uint, fileContent []byte, filename string) (string, error) {
+	materialID, err := s.materialsClient.UploadFile(ctx, fileContent, filename, userID, true)
+	if err == nil {
+		return materialID, nil
+	}
+
+	if !isNameConflictError(err) {
+		return "", err
+	}
+
+	getResp, profileErr := s.userClient.GetResumeProfileInternal(ctx, userID)
+	if profileErr != nil || getResp == nil || getResp.SourceMaterialId == nil || strings.TrimSpace(getResp.GetSourceMaterialId()) == "" {
+		return "", err
+	}
+
+	if deleteErr := s.materialsClient.DeleteByMaterialID(ctx, getResp.GetSourceMaterialId(), userID); deleteErr != nil {
+		return "", err
+	}
+
+	return s.materialsClient.UploadFile(ctx, fileContent, filename, userID, true)
+}
+
+func isNameConflictError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") || strings.Contains(msg, "code = alreadyexists")
 }
 
 func detectMimeType(filename string) string {
