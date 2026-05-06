@@ -37,6 +37,7 @@ var defaultAreaQuestionOptions = []string{
 }
 
 var workFormatQuestionOptions = []string{"Удаленно", "Гибрид", "Офис"}
+var experienceQuestionOptions = []string{"Нет опыта", "1-3 года", "3-6 лет", "6+ лет"}
 var salaryQuestionPresets = []string{"50000", "100000", "150000", "200000"}
 
 func NewParser(llmClient *llm.Client, parseModel string, maxChars int) *Parser {
@@ -540,6 +541,14 @@ func (p *Parser) BuildQuestionsForDraft(draft *model.ResumeProfileDraft) []model
 			Text:    "Выберите предпочитаемый формат работы",
 			Type:    "single_choice",
 			Options: workFormatQuestionOptions,
+		})
+	}
+	if normalizeExperienceLevel(draft.ExperienceLevel) == nil {
+		out = append(out, model.Question{
+			ID:      "experience_level",
+			Text:    "Укажите ваш опыт работы",
+			Type:    "single_choice",
+			Options: experienceQuestionOptions,
 		})
 	}
 	if draft.SalaryMin == nil || *draft.SalaryMin <= 0 {
