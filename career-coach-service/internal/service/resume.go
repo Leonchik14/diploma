@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"career-coach-service/internal/client"
 	"career-coach-service/internal/extractor"
@@ -17,6 +19,19 @@ import (
 
 const confidenceThreshold = 0.85
 const maxQuestionsPerRound = 3
+
+var resumeSignalWords = []string{
+	"резюме", "resume", "cv",
+	"опыт работы", "experience",
+	"навыки", "skills",
+	"образование", "education",
+	"о себе", "about me",
+	"контакты", "contact",
+	"должность", "position",
+	"проект", "project",
+}
+
+var reYearRange = regexp.MustCompile(`(?i)\b(19|20)\d{2}\s*[-–]\s*(19|20)?\d{2}\b`)
 
 type ResumeService struct {
 	parser          *parser.Parser
@@ -46,6 +61,9 @@ func (s *ResumeService) ParseResume(ctx context.Context, userID uint, materialID
 	text, err := s.extractor.ExtractText(ctx, fileStream, mimeType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract text: %w", err)
+	}
+	if err := validateResumeText(text); err != nil {
+		return nil, err
 	}
 
 	draft, questions, err := s.parser.ParseResume(ctx, text)
@@ -96,6 +114,9 @@ func (s *ResumeService) UploadAndParseResume(ctx context.Context, userID uint, f
 	text, err := s.extractor.ExtractText(ctx, bytes.NewReader(fileContent), mimeType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract text: %w", err)
+	}
+	if err := validateResumeText(text); err != nil {
+		return nil, err
 	}
 
 	draft, questions, err := s.parser.ParseResume(ctx, text)
@@ -165,7 +186,10 @@ func (s *ResumeService) AnswerQuestions(ctx context.Context, userID uint, req *m
 	}
 
 	draft := protoProfileToDraft(getResp)
-	updatedDraft, _, status := s.parser.ApplyAnswers(draft, row.Questions, req.Answers)
+	updatedDraft, _, status, err := s.parser.ApplyAnswers(draft, row.Questions, req.Answers)
+	if err != nil {
+		return nil, fmt.Errorf("invalid answer: %w", err)
+	}
 
 	// Build patch (only changed fields) and set_confirmed_fields from answers
 	patch := buildPatchFromDraft(updatedDraft)
@@ -189,8 +213,11 @@ func (s *ResumeService) AnswerQuestions(ctx context.Context, userID uint, req *m
 		return nil, fmt.Errorf("failed to patch profile: %w", err)
 	}
 
-	// Next questions: low confidence in updated draft, max 3
-	nextQuestions := nextQuestionsFromDraft(updatedDraft, maxQuestionsPerRound)
+	// Next questions from fixed pool (no free-text questions from LLM).
+	nextQuestions := s.parser.BuildQuestionsForDraft(updatedDraft)
+	if len(nextQuestions) > maxQuestionsPerRound {
+		nextQuestions = nextQuestions[:maxQuestionsPerRound]
+	}
 	if status == "completed" {
 		nextQuestions = nil
 	}
@@ -361,4 +388,40 @@ func nextQuestionsFromDraft(draft *model.ResumeProfileDraft, maxN int) []model.Q
 		})
 	}
 	return out
+}
+
+func validateResumeText(text string) error {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return fmt.Errorf("uploaded file is empty or unreadable")
+	}
+	if len([]rune(trimmed)) < 120 {
+		return fmt.Errorf("uploaded file does not look like a resume")
+	}
+
+	lower := strings.ToLower(trimmed)
+	signals := 0
+	for _, w := range resumeSignalWords {
+		if strings.Contains(lower, w) {
+			signals++
+		}
+	}
+	if reYearRange.MatchString(trimmed) {
+		signals++
+	}
+
+	letterCount := 0
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) {
+			letterCount++
+		}
+	}
+	if letterCount < 80 {
+		return fmt.Errorf("uploaded file does not look like a resume")
+	}
+
+	if signals < 2 {
+		return fmt.Errorf("uploaded file does not look like a resume")
+	}
+	return nil
 }

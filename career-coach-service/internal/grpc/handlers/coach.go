@@ -207,6 +207,9 @@ func (h *CoachHandler) AnswerResume(ctx context.Context, req *pbcoach.AnswerResu
 	resp, err := h.resumeService.AnswerQuestions(ctx, userID, answerReq)
 	if err != nil {
 		h.logger.Error("failed to answer questions", "error", err)
+		if strings.Contains(err.Error(), "invalid answer:") {
+			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		}
 		return nil, status.Errorf(codes.Internal, "failed to process answers")
 	}
 

@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"career-coach-service/internal/llm"
 	"career-coach-service/internal/model"
@@ -20,6 +22,22 @@ type Parser struct {
 	areasByID   map[string]string
 	areaIDByName map[string]string
 }
+
+var defaultAreaQuestionOptions = []string{
+	"Москва",
+	"Санкт-Петербург",
+	"Казань",
+	"Новосибирск",
+	"Екатеринбург",
+	"Нижний Новгород",
+	"Самара",
+	"Краснодар",
+	"Ростов-на-Дону",
+	"Россия",
+}
+
+var workFormatQuestionOptions = []string{"Удаленно", "Гибрид", "Офис"}
+var salaryQuestionPresets = []string{"50000", "100000", "150000", "200000"}
 
 func NewParser(llmClient *llm.Client, parseModel string, maxChars int) *Parser {
 	areasByID, areaIDByName := loadHHAreasCatalog()
@@ -69,7 +87,7 @@ func (p *Parser) ParseResume(ctx context.Context, text string) (*model.ResumePro
 	}
 
 	p.normalizeDraft(&result.Draft)
-	return &result.Draft, result.Questions, nil
+	return &result.Draft, p.BuildQuestionsForDraft(&result.Draft), nil
 }
 
 func (p *Parser) cleanText(text string) string {
@@ -373,7 +391,7 @@ func normalizeWorkFormatList(in []string) []string {
 	return out
 }
 
-func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model.Question, answers []model.QuestionAnswer) (*model.ResumeProfileDraft, []model.Question, string) {
+func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model.Question, answers []model.QuestionAnswer) (*model.ResumeProfileDraft, []model.Question, string, error) {
 	answerMap := make(map[string]string)
 	for _, ans := range answers {
 		answerMap[ans.QuestionID] = ans.Value
@@ -384,28 +402,45 @@ func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model
 
 	for _, q := range questions {
 		if answer, ok := answerMap[q.ID]; ok {
+			answer = strings.TrimSpace(answer)
+			applied := false
 			switch q.ID {
 			case "target_roles":
-				if answer != "" {
+				if isRelevantFreeText(answer, 2, 80) {
 					draft.TargetRoles = []string{answer}
 					draft.Confidence["target_roles"] = 1.0
+					applied = true
 				}
 			case "experience_level":
-				if answer != "" {
-					draft.ExperienceLevel = &answer
+				if normalized := normalizeExperienceLevel(&answer); normalized != nil {
+					draft.ExperienceLevel = normalized
 					draft.Confidence["experience_level"] = 1.0
+					applied = true
 				}
 			case "salary_min":
-				var salary float64
-				if _, err := fmt.Sscanf(answer, "%f", &salary); err == nil {
+				if salary, ok := parseReasonableSalary(answer); ok {
 					draft.SalaryMin = &salary
 					draft.Confidence["salary_min"] = 1.0
+					applied = true
+				} else {
+					return nil, nil, "", fmt.Errorf("invalid answer for salary_min: expected numeric value in range 1000..10000000")
 				}
 			case "work_format":
-				if answer != "" {
-					draft.WorkFormat = []string{answer}
+				if wf := normalizeWorkFormatSingle(answer); wf != "" {
+					draft.WorkFormat = []string{wf}
 					draft.Confidence["work_format"] = 1.0
+					applied = true
 				}
+			case "areas":
+				if areas := p.normalizeAreasFromUserAnswer(answer); len(areas) > 0 {
+					draft.Areas = areas
+					draft.Confidence["areas"] = 1.0
+					applied = true
+				}
+			}
+			if !applied {
+				updatedQuestions = append(updatedQuestions, q)
+				allConfirmed = false
 			}
 		} else {
 			if draft.Confidence[q.ID] < 0.6 {
@@ -420,5 +455,150 @@ func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model
 		status = "completed"
 	}
 
-	return draft, updatedQuestions, status
+	return draft, updatedQuestions, status, nil
+}
+
+func isRelevantFreeText(s string, minLen, maxLen int) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	runeLen := len([]rune(s))
+	if runeLen < minLen || runeLen > maxLen {
+		return false
+	}
+	low := strings.ToLower(s)
+	garbage := []string{"не знаю", "без понятия", "asdf", "qwerty", "123", "нет", "да", "-", "_"}
+	for _, g := range garbage {
+		if low == g {
+			return false
+		}
+	}
+	hasLetter := false
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			break
+		}
+	}
+	return hasLetter
+}
+
+func parseReasonableSalary(s string) (float64, bool) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, ",", ".")
+	s = strings.ReplaceAll(s, "₽", "")
+	s = strings.ReplaceAll(s, "руб", "")
+	s = strings.ReplaceAll(s, "rur", "")
+	s = strings.ReplaceAll(s, "k", "000")
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	// Защита от бессмысленных ответов.
+	if v < 1000 || v > 10000000 {
+		return 0, false
+	}
+	return v, true
+}
+
+func normalizeWorkFormatSingle(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch {
+	case strings.Contains(s, "remote"), strings.Contains(s, "удален"):
+		return "remote"
+	case strings.Contains(s, "hybrid"), strings.Contains(s, "гибрид"):
+		return "hybrid"
+	case strings.Contains(s, "office"), strings.Contains(s, "офис"):
+		return "office"
+	default:
+		return ""
+	}
+}
+
+func (p *Parser) BuildQuestionsForDraft(draft *model.ResumeProfileDraft) []model.Question {
+	if draft == nil {
+		return nil
+	}
+
+	out := make([]model.Question, 0, 3)
+	if len(draft.Areas) == 0 {
+		out = append(out, model.Question{
+			ID:      "areas",
+			Text:    "Выберите регион поиска работы",
+			Type:    "single_choice",
+			Options: p.buildAreaQuestionOptions(),
+		})
+	}
+	if len(normalizeWorkFormatList(draft.WorkFormat)) == 0 {
+		out = append(out, model.Question{
+			ID:      "work_format",
+			Text:    "Выберите предпочитаемый формат работы",
+			Type:    "single_choice",
+			Options: workFormatQuestionOptions,
+		})
+	}
+	if draft.SalaryMin == nil || *draft.SalaryMin <= 0 {
+		out = append(out, model.Question{
+			ID:      "salary_min",
+			Text:    "Укажите ожидаемую зарплату в рублях (число без пробелов), либо выберите один из вариантов",
+			Type:    "numeric_input",
+			Options: salaryQuestionPresets,
+		})
+	}
+	return out
+}
+
+func (p *Parser) buildAreaQuestionOptions() []string {
+	out := make([]string, 0, len(defaultAreaQuestionOptions))
+	for _, name := range defaultAreaQuestionOptions {
+		if _, ok := p.areaIDByName[normalizeAreaName(name)]; ok {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, "Россия")
+	}
+	return out
+}
+
+func (p *Parser) normalizeAreasFromUserAnswer(answer string) []model.Area {
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(answer, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	})
+
+	out := make([]model.Area, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		if name == "" {
+			continue
+		}
+		key := normalizeAreaName(name)
+		id, ok := p.areaIDByName[key]
+		if !ok {
+			continue
+		}
+		canonicalName := p.areasByID[id]
+		dedupeKey := id + "|" + canonicalName
+		if _, exists := seen[dedupeKey]; exists {
+			continue
+		}
+		seen[dedupeKey] = struct{}{}
+		out = append(out, model.Area{
+			ID:         id,
+			Name:       canonicalName,
+			Confidence: 1.0,
+		})
+	}
+	return out
 }
