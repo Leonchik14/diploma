@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
-	"sync"
 
 	"job-service/internal/client"
 	"job-service/internal/repository"
@@ -21,17 +21,30 @@ type Service struct {
 	hhClient      *client.HHClient
 	favoritesRepo *repository.FavoritesRepo
 	areaNames     []string
-	areasOnce     sync.Once
-	areasErr      error
-	areasMu       sync.RWMutex
+}
+
+var top50AreaNames = []string{
+	"Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
+	"Нижний Новгород", "Челябинск", "Самара", "Омск", "Ростов-на-Дону",
+	"Уфа", "Красноярск", "Пермь", "Воронеж", "Волгоград",
+	"Краснодар", "Саратов", "Тюмень", "Тольятти", "Ижевск",
+	"Барнаул", "Ульяновск", "Иркутск", "Хабаровск", "Ярославль",
+	"Владивосток", "Махачкала", "Томск", "Оренбург", "Кемерово",
+	"Новокузнецк", "Рязань", "Астрахань", "Набережные Челны", "Пенза",
+	"Липецк", "Киров", "Чебоксары", "Тула", "Калининград",
+	"Балашиха", "Курск", "Севастополь", "Сочи", "Ставрополь",
+	"Улан-Удэ", "Тверь", "Магнитогорск", "Иваново", "Брянск",
 }
 
 func NewService(userClient *client.UserClient, hhClient *client.HHClient, favoritesRepo *repository.FavoritesRepo) *Service {
+	areas := make([]string, len(top50AreaNames))
+	copy(areas, top50AreaNames)
+	sort.Strings(areas)
 	return &Service{
 		userClient:    userClient,
 		hhClient:      hhClient,
 		favoritesRepo: favoritesRepo,
-		areaNames:     nil,
+		areaNames:     areas,
 	}
 }
 
@@ -63,24 +76,8 @@ func (s *Service) GetVacancy(ctx context.Context, vacancyID string) (*client.HHV
 }
 
 func (s *Service) ListAreas(ctx context.Context) ([]string, error) {
-	s.areasOnce.Do(func() {
-		names, err := s.hhClient.ListAreaNames(ctx)
-		if err != nil {
-			s.areasErr = err
-			return
-		}
-		s.areasMu.Lock()
-		s.areaNames = names
-		s.areasMu.Unlock()
-	})
-
-	if s.areasErr != nil {
-		return nil, fmt.Errorf("areas catalog is not loaded: %w", s.areasErr)
-	}
-	s.areasMu.RLock()
 	out := make([]string, len(s.areaNames))
 	copy(out, s.areaNames)
-	s.areasMu.RUnlock()
 	return out, nil
 }
 
