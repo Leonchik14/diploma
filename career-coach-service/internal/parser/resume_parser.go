@@ -18,13 +18,14 @@ import (
 
 type Parser struct {
 	llmClient    *llm.Client
-	parseModel  string
-	maxChars    int
-	areasByID   map[string]string
+	parseModel   string
+	maxChars     int
+	areasByID    map[string]string
 	areaIDByName map[string]string
 }
 
 var defaultAreaQuestionOptions = []string{
+	"Все регионы",
 	"Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
 	"Нижний Новгород", "Челябинск", "Самара", "Омск", "Ростов-на-Дону",
 	"Уфа", "Красноярск", "Пермь", "Воронеж", "Волгоград",
@@ -44,10 +45,10 @@ var salaryQuestionPresets = []string{"50000", "100000", "150000", "200000"}
 func NewParser(llmClient *llm.Client, parseModel string, maxChars int) *Parser {
 	areasByID, areaIDByName := loadHHAreasCatalog()
 	return &Parser{
-		llmClient:   llmClient,
-		parseModel:  parseModel,
-		maxChars:    maxChars,
-		areasByID:   areasByID,
+		llmClient:    llmClient,
+		parseModel:   parseModel,
+		maxChars:     maxChars,
+		areasByID:    areasByID,
 		areaIDByName: areaIDByName,
 	}
 }
@@ -434,7 +435,11 @@ func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model
 					applied = true
 				}
 			case "areas":
-				if areas := p.normalizeAreasFromUserAnswer(answer); len(areas) > 0 {
+				if isAllRegionsAnswer(answer) {
+					draft.Areas = []model.Area{}
+					draft.Confidence["areas"] = 1.0
+					applied = true
+				} else if areas := p.normalizeAreasFromUserAnswer(answer); len(areas) > 0 {
 					draft.Areas = areas
 					draft.Confidence["areas"] = 1.0
 					applied = true
@@ -566,11 +571,21 @@ func (p *Parser) BuildQuestionsForDraft(draft *model.ResumeProfileDraft) []model
 func (p *Parser) buildAreaQuestionOptions() []string {
 	out := make([]string, 0, len(defaultAreaQuestionOptions))
 	for _, name := range defaultAreaQuestionOptions {
+		if strings.EqualFold(strings.TrimSpace(name), "Все регионы") {
+			out = append(out, "Все регионы")
+			continue
+		}
 		if _, ok := p.areaIDByName[normalizeAreaName(name)]; ok {
 			out = append(out, name)
 		}
 	}
 	sort.Strings(out)
+	for i, v := range out {
+		if v == "Все регионы" {
+			out = append([]string{"Все регионы"}, append(out[:i], out[i+1:]...)...)
+			break
+		}
+	}
 	if len(out) == 0 {
 		return defaultAreaQuestionOptions
 	}
@@ -581,6 +596,9 @@ func (p *Parser) normalizeAreasFromUserAnswer(answer string) []model.Area {
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
 		return nil
+	}
+	if isAllRegionsAnswer(answer) {
+		return []model.Area{}
 	}
 
 	parts := strings.FieldsFunc(answer, func(r rune) bool {
@@ -612,4 +630,9 @@ func (p *Parser) normalizeAreasFromUserAnswer(answer string) []model.Area {
 		})
 	}
 	return out
+}
+
+func isAllRegionsAnswer(answer string) bool {
+	s := normalizeAreaName(answer)
+	return s == "все регионы" || s == "любой регион" || s == "не важно"
 }

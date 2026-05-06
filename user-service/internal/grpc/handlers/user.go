@@ -84,6 +84,104 @@ func normalizeWorkFormatsInput(in []string) []string {
 	return out
 }
 
+func humanizeExperienceLevel(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	switch strings.TrimSpace(*v) {
+	case "noExperience":
+		out := "Нет опыта"
+		return &out
+	case "between1And3":
+		out := "1-3 года"
+		return &out
+	case "between3And6":
+		out := "3-6 лет"
+		return &out
+	case "moreThan6":
+		out := "6+ лет"
+		return &out
+	default:
+		out := strings.TrimSpace(*v)
+		if out == "" {
+			return nil
+		}
+		return &out
+	}
+}
+
+func humanizeWorkFormats(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	for _, wf := range in {
+		switch strings.TrimSpace(wf) {
+		case "remote":
+			out = append(out, "Удаленно")
+		case "hybrid":
+			out = append(out, "Гибрид")
+		case "office":
+			out = append(out, "Офис")
+		default:
+			trimmed := strings.TrimSpace(wf)
+			if trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+	}
+	return out
+}
+
+func humanizeAreasOrAllRegions(areaIDs []string) []string {
+	if len(areaIDs) == 0 {
+		return []string{"Все регионы"}
+	}
+	out := make([]string, 0, len(areaIDs))
+	for _, id := range areaIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return []string{"Все регионы"}
+	}
+	return out
+}
+
+func normalizeAreaIDsInput(in []*pbuser.Area) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, a := range in {
+		if a == nil {
+			continue
+		}
+		id := strings.TrimSpace(a.GetId())
+		name := strings.TrimSpace(a.GetName())
+		candidate := id
+		if candidate == "" {
+			candidate = name
+		}
+		if candidate == "" {
+			continue
+		}
+		low := strings.ToLower(candidate)
+		if low == "все регионы" || low == "all regions" || low == "любой регион" || low == "не важно" {
+			return []string{}
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
 type UserHandler struct {
 	pbuser.UnimplementedUserServiceServer
 	cfg                *config.Config
@@ -187,9 +285,15 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 
 	// resume_uploaded: считаем по наличию записи в таблице резюме
 	resumeUploaded := false
+	var humanizedResume *pbuser.ResumeProfileHumanized
 	if h.resumeRepo != nil {
 		if row, err := h.resumeRepo.GetByUserID(ctx, uint(userID)); err == nil && row != nil {
 			resumeUploaded = true
+			humanizedResume = &pbuser.ResumeProfileHumanized{
+				WorkFormat: humanizeWorkFormats(row.WorkFormat),
+				Areas:      humanizeAreasOrAllRegions(row.AreaIDs),
+			}
+			humanizedResume.ExperienceLevel = humanizeExperienceLevel(row.ExperienceLevel)
 		}
 	}
 
@@ -204,16 +308,17 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 
 	return &pbuser.GetMeResponse{
 		User: &pbuser.UserProfile{
-			Id:                   uint32(userID),
-			FirstName:            firstName,
-			LastName:             lastName,
-			Email:                email,
-			Username:             username,
-			ResumeUploaded:       resumeUploaded,
-			TotalInterviews:      totalIv,
-			CompletedInterviews:  completedIv,
-			UpcomingInterviews:   upcomingIv,
-			NotificationsEnabled: notificationsEnabled,
+			Id:                     uint32(userID),
+			FirstName:              firstName,
+			LastName:               lastName,
+			Email:                  email,
+			Username:               username,
+			ResumeUploaded:         resumeUploaded,
+			TotalInterviews:        totalIv,
+			CompletedInterviews:    completedIv,
+			UpcomingInterviews:     upcomingIv,
+			NotificationsEnabled:   notificationsEnabled,
+			ResumeProfileHumanized: humanizedResume,
 		},
 	}, nil
 }
@@ -349,14 +454,14 @@ func (h *UserHandler) GetResumeProfile(ctx context.Context, req *pbuser.GetResum
 	if !ok {
 		return nil, status.Errorf(codes.Unauthenticated, "user not found in context")
 	}
-	return h.getResumeProfileResponse(ctx, uint(userID))
+	return h.getResumeProfileResponse(ctx, uint(userID), true)
 }
 
 func (h *UserHandler) GetResumeProfileInternal(ctx context.Context, req *pbuser.GetResumeProfileInternalRequest) (*pbuser.GetResumeProfileInternalResponse, error) {
 	if req.UserId == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "user_id required")
 	}
-	resp, err := h.getResumeProfileResponse(ctx, uint(req.UserId))
+	resp, err := h.getResumeProfileResponse(ctx, uint(req.UserId), false)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +475,7 @@ func (h *UserHandler) GetResumeProfileInternal(ctx context.Context, req *pbuser.
 	}, nil
 }
 
-func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint) (*pbuser.GetResumeProfileResponse, error) {
+func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint, humanized bool) (*pbuser.GetResumeProfileResponse, error) {
 	row, err := h.resumeRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "database error")
@@ -379,7 +484,7 @@ func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint)
 		return nil, status.Errorf(codes.NotFound, "resume profile not found")
 	}
 
-	pbProfile := rowToProtoProfile(row)
+	pbProfile := rowToProtoProfile(row, humanized)
 	statusProto := pbuser.ResumeProfileStatus_RESUME_PROFILE_STATUS_UNSPECIFIED
 	if row.Status == "DRAFT" {
 		statusProto = pbuser.ResumeProfileStatus_DRAFT
@@ -400,14 +505,19 @@ func (h *UserHandler) getResumeProfileResponse(ctx context.Context, userID uint)
 	return resp, nil
 }
 
-func rowToProtoProfile(row *postgres.ResumeProfileRow) *pbuser.ResumeProfile {
+func rowToProtoProfile(row *postgres.ResumeProfileRow, humanized bool) *pbuser.ResumeProfile {
 	p := &pbuser.ResumeProfile{
 		TargetRoles: row.TargetRoles,
-		WorkFormat:  row.WorkFormat,
 		SkillsTop:   row.SkillsTop,
 	}
-	if row.ExperienceLevel != nil {
-		p.ExperienceLevel = row.ExperienceLevel
+	if humanized {
+		p.WorkFormat = humanizeWorkFormats(row.WorkFormat)
+		p.ExperienceLevel = humanizeExperienceLevel(row.ExperienceLevel)
+	} else {
+		p.WorkFormat = row.WorkFormat
+		if row.ExperienceLevel != nil {
+			p.ExperienceLevel = row.ExperienceLevel
+		}
 	}
 	if row.SalaryMin != nil {
 		s := float64(*row.SalaryMin)
@@ -422,9 +532,20 @@ func rowToProtoProfile(row *postgres.ResumeProfileRow) *pbuser.ResumeProfile {
 	if row.Notes != nil {
 		p.Notes = row.Notes
 	}
-	areas := row.AreaIDsToAreas()
-	for i := range areas {
-		p.Areas = append(p.Areas, &pbuser.Area{Id: areas[i].ID, Name: areas[i].Name})
+	if humanized {
+		areas := humanizeAreasOrAllRegions(row.AreaIDs)
+		if len(areas) == 0 {
+			p.Areas = append(p.Areas, &pbuser.Area{Id: "Все регионы", Name: "Все регионы"})
+		} else {
+			for i := range areas {
+				p.Areas = append(p.Areas, &pbuser.Area{Id: areas[i], Name: areas[i]})
+			}
+		}
+	} else {
+		areas := row.AreaIDsToAreas()
+		for i := range areas {
+			p.Areas = append(p.Areas, &pbuser.Area{Id: areas[i].ID, Name: areas[i].Name})
+		}
 	}
 	return p
 }
@@ -446,10 +567,7 @@ func (h *UserHandler) UpsertResumeProfileInternal(ctx context.Context, req *pbus
 	if targetRoles == nil {
 		targetRoles = []string{}
 	}
-	areaIDs := make([]string, 0, len(req.Profile.Areas))
-	for _, a := range req.Profile.Areas {
-		areaIDs = append(areaIDs, a.Id)
-	}
+	areaIDs := normalizeAreaIDsInput(req.Profile.Areas)
 	workFormat := req.Profile.WorkFormat
 	if workFormat == nil {
 		workFormat = []string{}
@@ -503,10 +621,7 @@ func (h *UserHandler) PatchResumeProfileInternal(ctx context.Context, req *pbuse
 			}
 		}
 		if len(req.Patch.Areas) > 0 {
-			ids := make([]string, 0, len(req.Patch.Areas))
-			for _, a := range req.Patch.Areas {
-				ids = append(ids, a.Id)
-			}
+			ids := normalizeAreaIDsInput(req.Patch.Areas)
 			patch["area_ids"] = ids
 		}
 		if req.Patch.SalaryMin != nil {
@@ -580,10 +695,7 @@ func (h *UserHandler) UpdateResumeProfile(ctx context.Context, req *pbuser.Updat
 			sourceMaterialID = *row.SourceMaterialID
 		}
 	}
-	areaIDs := make([]string, 0, len(req.Profile.Areas))
-	for _, a := range req.Profile.Areas {
-		areaIDs = append(areaIDs, a.Id)
-	}
+	areaIDs := normalizeAreaIDsInput(req.Profile.Areas)
 	var salaryMin *int
 	if req.Profile.SalaryMin != nil {
 		v := int(*req.Profile.SalaryMin)

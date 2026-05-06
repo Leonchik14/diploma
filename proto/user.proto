@@ -27,6 +27,13 @@ message UserProfile {
   int32 completed_interviews = 8;
   int32 upcoming_interviews = 9;
   bool notifications_enabled = 10;
+  optional ResumeProfileHumanized resume_profile_humanized = 11;
+}
+
+message ResumeProfileHumanized {
+  optional string experience_level = 1;
+  repeated string work_format = 2;
+  repeated string areas = 3;
 }
 
 message ResumeProfile {
