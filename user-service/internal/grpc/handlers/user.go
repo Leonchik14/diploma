@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"user-service/internal/clients"
@@ -31,6 +32,51 @@ type UserHandler struct {
 	resumeRepo         *postgres.ResumeProfileRepo
 	materialsClient    *clients.MaterialsClient
 	calendarClient     *clients.CalendarClient
+}
+
+var allowedProfilePhotoMIMEs = map[string]struct{}{
+	"image/jpeg": {},
+	"image/png":  {},
+	"image/webp": {},
+}
+
+var profilePhotoMimeByExt = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".webp": "image/webp",
+}
+
+func normalizeProfilePhotoMIME(filename, mimeType string) (string, error) {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
+	expectedByExt, hasExt := profilePhotoMimeByExt[ext]
+
+	mt := strings.ToLower(strings.TrimSpace(mimeType))
+	if mt == "image/jpg" {
+		mt = "image/jpeg"
+	}
+
+	if mt == "" {
+		if hasExt {
+			mt = expectedByExt
+		} else {
+			return "", status.Errorf(codes.InvalidArgument, "mime_type is required or filename must have supported extension")
+		}
+	}
+
+	if _, ok := allowedProfilePhotoMIMEs[mt]; !ok {
+		return "", status.Errorf(codes.InvalidArgument, "unsupported image type: only jpeg, png, webp are allowed")
+	}
+
+	if hasExt && expectedByExt != mt {
+		return "", status.Errorf(codes.InvalidArgument, "mime_type does not match filename extension")
+	}
+
+	if !hasExt {
+		return "", status.Errorf(codes.InvalidArgument, "unsupported file extension: only .jpg, .jpeg, .png, .webp are allowed")
+	}
+
+	return mt, nil
 }
 
 func NewUserHandler(cfg *config.Config, logger *slog.Logger) *UserHandler {
@@ -140,10 +186,15 @@ func (h *UserHandler) UploadProfilePhoto(ctx context.Context, req *pbuser.Upload
 
 	filename := strings.TrimSpace(req.Filename)
 	if filename == "" {
-		filename = "profile_photo"
+		return nil, status.Errorf(codes.InvalidArgument, "filename is required")
 	}
 
-	materialID, err := h.materialsClient.UploadUserProfilePhoto(ctx, uint(userID), req.FileContent, filename, req.MimeType)
+	normalizedMIME, err := normalizeProfilePhotoMIME(filename, req.MimeType)
+	if err != nil {
+		return nil, err
+	}
+
+	materialID, err := h.materialsClient.UploadUserProfilePhoto(ctx, uint(userID), req.FileContent, filename, normalizedMIME)
 	if err != nil {
 		h.logger.Error("failed to upload profile photo to materials-service", "user_id", userID, "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to upload profile photo")

@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"calendar-service/internal/model"
 	"calendar-service/internal/repo/postgres"
@@ -15,13 +17,38 @@ type CalendarService struct {
 	repo *postgres.EventsRepo
 }
 
+const (
+	maxTitleLen       = 200
+	maxDescriptionLen = 5000
+	maxLocationLen    = 255
+)
+
 func NewCalendarService(repo *postgres.EventsRepo) *CalendarService {
 	return &CalendarService{repo: repo}
 }
 
 func (s *CalendarService) CreateEvent(ctx context.Context, userID uint, event *model.Event) (*model.Event, error) {
+	event.Title = strings.TrimSpace(event.Title)
 	if event.Title == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "title is required")
+	}
+	if utf8.RuneCountInString(event.Title) > maxTitleLen {
+		return nil, status.Errorf(codes.InvalidArgument, "title is too long (max %d characters)", maxTitleLen)
+	}
+	if event.Description != nil && utf8.RuneCountInString(*event.Description) > maxDescriptionLen {
+		return nil, status.Errorf(codes.InvalidArgument, "description is too long (max %d characters)", maxDescriptionLen)
+	}
+	if event.Location != nil && utf8.RuneCountInString(*event.Location) > maxLocationLen {
+		return nil, status.Errorf(codes.InvalidArgument, "location is too long (max %d characters)", maxLocationLen)
+	}
+	if event.Timezone != nil {
+		tz := strings.TrimSpace(*event.Timezone)
+		if tz != "" {
+			if _, err := time.LoadLocation(tz); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid timezone: expected IANA format")
+			}
+			event.Timezone = &tz
+		}
 	}
 	if event.StartTime.After(event.EndTime) || event.StartTime.Equal(event.EndTime) {
 		return nil, status.Errorf(codes.InvalidArgument, "start_time must be before end_time")
@@ -50,13 +77,22 @@ func (s *CalendarService) UpdateEvent(ctx context.Context, userID uint, eventID 
 	var updateErr error
 	err := s.repo.Update(ctx, userID, eventID, func(event *model.Event) {
 		if patch.Title != nil {
-			if *patch.Title == "" {
+			title := strings.TrimSpace(*patch.Title)
+			if title == "" {
 				updateErr = status.Errorf(codes.InvalidArgument, "title cannot be empty")
 				return
 			}
-			event.Title = *patch.Title
+			if utf8.RuneCountInString(title) > maxTitleLen {
+				updateErr = status.Errorf(codes.InvalidArgument, "title is too long (max %d characters)", maxTitleLen)
+				return
+			}
+			event.Title = title
 		}
 		if patch.Description != nil {
+			if utf8.RuneCountInString(*patch.Description) > maxDescriptionLen {
+				updateErr = status.Errorf(codes.InvalidArgument, "description is too long (max %d characters)", maxDescriptionLen)
+				return
+			}
 			event.Description = patch.Description
 		}
 		if patch.EventType != nil {
@@ -69,9 +105,22 @@ func (s *CalendarService) UpdateEvent(ctx context.Context, userID uint, eventID 
 			event.EndTime = *patch.EndTime
 		}
 		if patch.Timezone != nil {
-			event.Timezone = patch.Timezone
+			tz := strings.TrimSpace(*patch.Timezone)
+			if tz != "" {
+				if _, err := time.LoadLocation(tz); err != nil {
+					updateErr = status.Errorf(codes.InvalidArgument, "invalid timezone: expected IANA format")
+					return
+				}
+				event.Timezone = &tz
+			} else {
+				event.Timezone = patch.Timezone
+			}
 		}
 		if patch.Location != nil {
+			if utf8.RuneCountInString(*patch.Location) > maxLocationLen {
+				updateErr = status.Errorf(codes.InvalidArgument, "location is too long (max %d characters)", maxLocationLen)
+				return
+			}
 			event.Location = patch.Location
 		}
 		if patch.RelatedVacancyID != nil {

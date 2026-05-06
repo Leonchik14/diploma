@@ -54,6 +54,7 @@ service BackendGateway {
   
   // Jobs
   rpc SearchJobs(jobs.SearchJobsRequest) returns (jobs.SearchJobsResponse);
+  rpc ListAreas(jobs.ListAreasRequest) returns (jobs.ListAreasResponse);
   rpc AddFavorite(jobs.AddFavoriteRequest) returns (jobs.AddFavoriteResponse);
   rpc RemoveFavorite(jobs.RemoveFavoriteRequest) returns (jobs.RemoveFavoriteResponse);
   rpc ListFavorites(jobs.ListFavoritesRequest) returns (jobs.ListFavoritesResponse);

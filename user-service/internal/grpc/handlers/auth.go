@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 	"user-service/internal/config"
 	"user-service/internal/database"
@@ -26,6 +28,19 @@ type AuthHandler struct {
 	privKey *rsa.PrivateKey
 }
 
+var emailFormatRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+
+func normalizeEmail(raw string) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(raw))
+	if email == "" {
+		return "", status.Errorf(codes.InvalidArgument, "email is required")
+	}
+	if !emailFormatRegex.MatchString(email) {
+		return "", status.Errorf(codes.InvalidArgument, "invalid email format")
+	}
+	return email, nil
+}
+
 func NewAuthHandler(cfg *config.Config, logger *slog.Logger) *AuthHandler {
 	privKey, err := utils.LoadPrivateKey(cfg.JWTPrivateKey)
 	if err != nil {
@@ -40,9 +55,9 @@ func NewAuthHandler(cfg *config.Config, logger *slog.Logger) *AuthHandler {
 }
 
 func (h *AuthHandler) Register(ctx context.Context, req *pbauth.RegisterRequest) (*pbauth.RegisterResponse, error) {
-	// Валидация
-	if req.Email == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "email is required")
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		return nil, err
 	}
 	if req.Password == "" || len(req.Password) < 8 {
 		return nil, status.Errorf(codes.InvalidArgument, "password must be at least 8 characters")
@@ -50,9 +65,9 @@ func (h *AuthHandler) Register(ctx context.Context, req *pbauth.RegisterRequest)
 
 	// Проверяем, существует ли пользователь с таким email
 	var existingUserID uint
-	err := database.DB.QueryRow(ctx,
+	err = database.DB.QueryRow(ctx,
 		"SELECT id FROM users WHERE email = $1 LIMIT 1",
-		req.Email).Scan(&existingUserID)
+		email).Scan(&existingUserID)
 
 	if err == nil {
 		return nil, status.Errorf(codes.AlreadyExists, "user with this email already exists")
@@ -68,13 +83,13 @@ func (h *AuthHandler) Register(ctx context.Context, req *pbauth.RegisterRequest)
 	}
 
 	// username для логина = email
-	username := req.Email
+	username := email
 	now := time.Now()
 	var userID uint
 	err = database.DB.QueryRow(ctx,
 		`INSERT INTO users (username, email, password, first_name, last_name, created_at, updated_at) 
 		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		username, req.Email, hashedPassword, req.FirstName, req.LastName, now, now).Scan(&userID)
+		username, email, hashedPassword, req.FirstName, req.LastName, now, now).Scan(&userID)
 
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -87,7 +102,7 @@ func (h *AuthHandler) Register(ctx context.Context, req *pbauth.RegisterRequest)
 	}
 
 	// Генерируем access токен (username = email для логина)
-	accessToken, err := utils.GenerateAccessTokenRSA(userID, req.Email, username, h.privKey)
+	accessToken, err := utils.GenerateAccessTokenRSA(userID, email, username, h.privKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate token")
 	}
@@ -105,20 +120,25 @@ func (h *AuthHandler) Register(ctx context.Context, req *pbauth.RegisterRequest)
 			Id:         uint32(userID),
 			FirstName:  req.FirstName,
 			LastName:   req.LastName,
-			Email:      req.Email,
+			Email:      email,
 			Username:   username,
 		},
 	}, nil
 }
 
 func (h *AuthHandler) Login(ctx context.Context, req *pbauth.LoginRequest) (*pbauth.LoginResponse, error) {
+	emailInput, err := normalizeEmail(req.Email)
+	if err != nil {
+		return nil, err
+	}
+
 	var userID uint
 	var email, username, password string
 	var deletedAt sql.NullTime
 
-	err := database.DB.QueryRow(ctx,
+	err = database.DB.QueryRow(ctx,
 		"SELECT id, email, username, password, deleted_at FROM users WHERE email = $1",
-		req.Email).Scan(&userID, &email, &username, &password, &deletedAt)
+		emailInput).Scan(&userID, &email, &username, &password, &deletedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -267,6 +287,10 @@ func (h *AuthHandler) SendPasswordResetCode(ctx context.Context, req *pbauth.Pas
 }
 
 func (h *AuthHandler) VerifyPasswordReset(ctx context.Context, req *pbauth.PasswordResetVerifyRequest) (*pbauth.PasswordResetVerifyResponse, error) {
+	if len(req.Password) < 8 {
+		return nil, status.Errorf(codes.InvalidArgument, "password must be at least 8 characters")
+	}
+
 	var expiresAt time.Time
 	var used bool
 

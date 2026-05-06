@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log/slog"
+	"unicode/utf8"
 	"strings"
 	"time"
 
@@ -23,6 +24,22 @@ type CoachHandler struct {
 	coachService  *service.CoachService
 	resumeService *service.ResumeService
 	logger        *slog.Logger
+}
+
+const (
+	maxQuestionLen         = 2000
+	maxContextChunks       = 20
+	maxContextChunkContent = 4000
+	maxChatMessageLen      = 4000
+)
+
+func hasUnsafeControlChars(s string) bool {
+	for _, r := range s {
+		if r < 32 && r != '\n' && r != '\r' && r != '\t' {
+			return true
+		}
+	}
+	return false
 }
 
 func NewCoachHandler(coachService *service.CoachService, resumeService *service.ResumeService, logger *slog.Logger) *CoachHandler {
@@ -47,12 +64,22 @@ func (h *CoachHandler) Ask(ctx context.Context, req *pbcoach.AskRequest) (*pbcoa
 		return nil, err
 	}
 
-	if req.Question == "" {
+	question := strings.TrimSpace(req.Question)
+	if question == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "question is required")
+	}
+	if utf8.RuneCountInString(question) > maxQuestionLen {
+		return nil, status.Errorf(codes.InvalidArgument, "question is too long (max %d characters)", maxQuestionLen)
+	}
+	if hasUnsafeControlChars(question) {
+		return nil, status.Errorf(codes.InvalidArgument, "question contains unsupported control characters")
+	}
+	if len(req.ContextChunks) > maxContextChunks {
+		return nil, status.Errorf(codes.InvalidArgument, "too many context chunks (max %d)", maxContextChunks)
 	}
 
 	askReq := &model.AskRequest{
-		Question: req.Question,
+		Question: question,
 	}
 
 	// Handle optional conversation_id
@@ -69,10 +96,20 @@ func (h *CoachHandler) Ask(ctx context.Context, req *pbcoach.AskRequest) (*pbcoa
 	if len(req.ContextChunks) > 0 {
 		askReq.ContextChunks = make([]model.ContextChunk, len(req.ContextChunks))
 		for i, chunk := range req.ContextChunks {
+			content := strings.TrimSpace(chunk.Content)
+			if content == "" {
+				return nil, status.Errorf(codes.InvalidArgument, "context chunk content is required")
+			}
+			if utf8.RuneCountInString(content) > maxContextChunkContent {
+				return nil, status.Errorf(codes.InvalidArgument, "context chunk content is too long (max %d characters)", maxContextChunkContent)
+			}
+			if hasUnsafeControlChars(content) {
+				return nil, status.Errorf(codes.InvalidArgument, "context chunk contains unsupported control characters")
+			}
 			askReq.ContextChunks[i] = model.ContextChunk{
 				Source:  chunk.Source,
 				Title:   chunk.Title,
-				Content: chunk.Content,
+				Content: content,
 			}
 		}
 	}
@@ -244,6 +281,12 @@ func (h *CoachHandler) AddChatMessage(ctx context.Context, req *pbcoach.AddChatM
 	content := strings.TrimSpace(req.Content)
 	if content == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "content is required")
+	}
+	if utf8.RuneCountInString(content) > maxChatMessageLen {
+		return nil, status.Errorf(codes.InvalidArgument, "content is too long (max %d characters)", maxChatMessageLen)
+	}
+	if hasUnsafeControlChars(content) {
+		return nil, status.Errorf(codes.InvalidArgument, "content contains unsupported control characters")
 	}
 
 	role := ""

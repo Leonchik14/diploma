@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"job-service/internal/auth"
@@ -20,6 +21,7 @@ import (
 type JobsServiceInterface interface {
 	SearchJobs(ctx context.Context, userID string, page, perPage int) (*client.HHResponse, error)
 	GetVacancy(ctx context.Context, vacancyID string) (*client.HHVacancy, error)
+	ListAreas(ctx context.Context) ([]string, error)
 	GetFavoriteIDs(ctx context.Context, userID string) ([]string, error)
 	AddFavorite(ctx context.Context, userID, vacancyID string) error
 	RemoveFavorite(ctx context.Context, userID, vacancyID string) error
@@ -33,6 +35,8 @@ type JobsHandler struct {
 	logger  *slog.Logger
 }
 
+var vacancyIDRegex = regexp.MustCompile(`^\d+$`)
+
 func NewJobsHandler(svc JobsServiceInterface, logger *slog.Logger) *JobsHandler {
 	return &JobsHandler{
 		service: svc,
@@ -40,24 +44,14 @@ func NewJobsHandler(svc JobsServiceInterface, logger *slog.Logger) *JobsHandler 
 	}
 }
 
-func clampPerPage(perPage int32) int32 {
-	if perPage < 1 {
-		return 10
-	}
-	if perPage > 100 {
-		return 100
-	}
-	return perPage
-}
-
 func (h *JobsHandler) SearchJobs(ctx context.Context, req *pbjobs.SearchJobsRequest) (*pbjobs.SearchJobsResponse, error) {
 	page := req.Page
 	if page < 0 {
-		page = 0
+		return nil, status.Errorf(codes.InvalidArgument, "page must be >= 0")
 	}
-	perPage := clampPerPage(req.PerPage)
-	if req.PerPage == 0 {
-		perPage = 10
+	perPage := req.PerPage
+	if perPage < 1 || perPage > 100 {
+		return nil, status.Errorf(codes.InvalidArgument, "per_page must be between 1 and 100")
 	}
 
 	userID, err := auth.UserIDFromMetadata(ctx)
@@ -114,6 +108,9 @@ func (h *JobsHandler) GetVacancy(ctx context.Context, req *pbjobs.GetVacancyRequ
 	if req.VacancyId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id is required")
 	}
+	if !vacancyIDRegex.MatchString(req.VacancyId) {
+		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id must be numeric")
+	}
 
 	vacancy, err := h.service.GetVacancy(ctx, req.VacancyId)
 	if err != nil {
@@ -129,6 +126,15 @@ func (h *JobsHandler) GetVacancy(ctx context.Context, req *pbjobs.GetVacancyRequ
 	}, nil
 }
 
+func (h *JobsHandler) ListAreas(ctx context.Context, req *pbjobs.ListAreasRequest) (*pbjobs.ListAreasResponse, error) {
+	areaNames, err := h.service.ListAreas(ctx)
+	if err != nil {
+		h.logger.Error("failed to list areas", "error", err)
+		return nil, status.Errorf(codes.Internal, "failed to list areas")
+	}
+	return &pbjobs.ListAreasResponse{AreaNames: areaNames}, nil
+}
+
 func (h *JobsHandler) AddFavorite(ctx context.Context, req *pbjobs.AddFavoriteRequest) (*pbjobs.AddFavoriteResponse, error) {
 	userID, err := auth.UserIDFromMetadata(ctx)
 	if err != nil {
@@ -137,6 +143,9 @@ func (h *JobsHandler) AddFavorite(ctx context.Context, req *pbjobs.AddFavoriteRe
 
 	if req.VacancyId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id is required")
+	}
+	if !vacancyIDRegex.MatchString(req.VacancyId) {
+		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id must be numeric")
 	}
 
 	if err := h.service.AddFavorite(ctx, userID, req.VacancyId); err != nil {
@@ -155,6 +164,9 @@ func (h *JobsHandler) RemoveFavorite(ctx context.Context, req *pbjobs.RemoveFavo
 
 	if req.VacancyId == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id is required")
+	}
+	if !vacancyIDRegex.MatchString(req.VacancyId) {
+		return nil, status.Errorf(codes.InvalidArgument, "vacancy_id must be numeric")
 	}
 
 	if err := h.service.RemoveFavorite(ctx, userID, req.VacancyId); err != nil {

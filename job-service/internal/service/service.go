@@ -19,13 +19,16 @@ type Service struct {
 	userClient    *client.UserClient
 	hhClient      *client.HHClient
 	favoritesRepo *repository.FavoritesRepo
+	areaNames     []string
 }
 
 func NewService(userClient *client.UserClient, hhClient *client.HHClient, favoritesRepo *repository.FavoritesRepo) *Service {
+	areaNames := loadAreaNamesCatalog()
 	return &Service{
 		userClient:    userClient,
 		hhClient:      hhClient,
 		favoritesRepo: favoritesRepo,
+		areaNames:     areaNames,
 	}
 }
 
@@ -54,6 +57,15 @@ func (s *Service) GetVacancy(ctx context.Context, vacancyID string) (*client.HHV
 		return nil, fmt.Errorf("vacancy_id is required")
 	}
 	return s.hhClient.GetVacancyByID(ctx, vacancyID)
+}
+
+func (s *Service) ListAreas(ctx context.Context) ([]string, error) {
+	if len(s.areaNames) == 0 {
+		return nil, fmt.Errorf("areas catalog is not loaded")
+	}
+	out := make([]string, len(s.areaNames))
+	copy(out, s.areaNames)
+	return out, nil
 }
 
 func (s *Service) AddFavorite(ctx context.Context, userID string, vacancyID string) error {

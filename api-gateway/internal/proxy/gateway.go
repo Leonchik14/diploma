@@ -208,6 +208,10 @@ func (p *GatewayProxy) SearchJobs(ctx context.Context, req *pbjobs.SearchJobsReq
 	return p.jobsClient.SearchJobs(p.forwardMetadata(ctx), req)
 }
 
+func (p *GatewayProxy) ListAreas(ctx context.Context, req *pbjobs.ListAreasRequest) (*pbjobs.ListAreasResponse, error) {
+	return p.jobsClient.ListAreas(p.forwardMetadata(ctx), req)
+}
+
 func (p *GatewayProxy) AddFavorite(ctx context.Context, req *pbjobs.AddFavoriteRequest) (*pbjobs.AddFavoriteResponse, error) {
 	return p.jobsClient.AddFavorite(p.forwardMetadata(ctx), req)
 }

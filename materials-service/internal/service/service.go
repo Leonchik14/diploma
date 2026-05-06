@@ -465,3 +465,7 @@ func (s *Service) generateObjectKey(userID, nodeID uint) string {
 func (s *Service) DeleteUserData(ctx context.Context, userID uint) error {
 	return s.repo.DeleteUserData(ctx, userID)
 }
+
+func (s *Service) GetUserStorageUsage(ctx context.Context, userID uint) (int64, error) {
+	return s.repo.GetTotalActiveFileSizeByUser(ctx, userID)
+}

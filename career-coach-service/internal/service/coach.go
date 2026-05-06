@@ -81,6 +81,10 @@ func (s *CoachService) Ask(ctx context.Context, userID uint, req *model.AskReque
 	if err != nil {
 		return nil, fmt.Errorf("failed to get LLM response: %w", err)
 	}
+	cleanAnswer := sanitizeCoachFacingText(answer)
+	if strings.TrimSpace(cleanAnswer) != "" {
+		answer = cleanAnswer
+	}
 
 	if err := s.repo.AddMessageToConversation(ctx, conversationID, userID, "user", req.Question, s.chatHistoryLimit); err != nil {
 		return nil, fmt.Errorf("failed to save user message: %w", err)
@@ -156,6 +160,10 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 	if err != nil {
 		return "", fmt.Errorf("failed to get LLM response: %w", err)
 	}
+	cleanRecommendations := sanitizeCoachFacingText(recommendations)
+	if strings.TrimSpace(cleanRecommendations) != "" {
+		recommendations = cleanRecommendations
+	}
 	recommendations = normalizePrepareForVacancyText(recommendations)
 	_ = s.repo.InsertCoachInteraction(ctx, userID, "prepare_vacancy", recommendations, map[string]any{
 		"vacancy_id": vacancyID,
@@ -202,6 +210,7 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 	if score == 0 {
 		score = extractScoreFromText(answer)
 	}
+	recBody = sanitizeCoachFacingText(recBody)
 	if strings.TrimSpace(recBody) == "" {
 		recBody = sanitizeCoachFacingText(stripLeadingScoreSection(answer))
 	}

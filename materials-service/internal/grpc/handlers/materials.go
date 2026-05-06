@@ -6,6 +6,11 @@ import (
 	"encoding/base64"
 	"io"
 	"log/slog"
+	"net/http"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"materials-service/internal/models"
 	"materials-service/internal/requestctx"
@@ -21,6 +26,72 @@ type MaterialsHandler struct {
 	pbmaterials.UnimplementedMaterialsServiceServer
 	service *service.Service
 	logger  *slog.Logger
+}
+
+const (
+	maxUploadFileSizeBytes = 25 * 1024 * 1024
+	maxUserStorageBytes    = 100 * 1024 * 1024
+	maxNodeNameLen         = 120
+)
+
+var (
+	invalidNodeNameChars = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F]`)
+	allowedFileTypesByExt = map[string]string{
+		".pdf":  "application/pdf",
+		".doc":  "application/msword",
+		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		".txt":  "text/plain",
+		".rtf":  "application/rtf",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png":  "image/png",
+		".webp": "image/webp",
+	}
+)
+
+func normalizeNodeName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", status.Errorf(codes.InvalidArgument, "name is required")
+	}
+	if utf8.RuneCountInString(name) > maxNodeNameLen {
+		return "", status.Errorf(codes.InvalidArgument, "name is too long (max %d characters)", maxNodeNameLen)
+	}
+	if invalidNodeNameChars.MatchString(name) {
+		return "", status.Errorf(codes.InvalidArgument, "name contains forbidden characters")
+	}
+	return name, nil
+}
+
+func inferAndValidateUploadMIME(filename string, content []byte) (string, error) {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
+	expectedMIME, ok := allowedFileTypesByExt[ext]
+	if !ok {
+		return "", status.Errorf(codes.InvalidArgument, "unsupported file extension")
+	}
+
+	sniffBytes := content
+	if len(sniffBytes) > 512 {
+		sniffBytes = sniffBytes[:512]
+	}
+	detected := strings.ToLower(http.DetectContentType(sniffBytes))
+
+	compatible := map[string]map[string]struct{}{
+		".pdf":  {"application/pdf": {}},
+		".doc":  {"application/msword": {}, "application/octet-stream": {}},
+		".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document": {}, "application/zip": {}, "application/octet-stream": {}},
+		".txt":  {"text/plain; charset=utf-8": {}, "text/plain; charset=us-ascii": {}, "application/octet-stream": {}},
+		".rtf":  {"application/rtf": {}, "text/rtf": {}, "application/octet-stream": {}},
+		".jpg":  {"image/jpeg": {}},
+		".jpeg": {"image/jpeg": {}},
+		".png":  {"image/png": {}},
+		".webp": {"image/webp": {}},
+	}
+	if _, ok := compatible[ext][detected]; !ok {
+		return "", status.Errorf(codes.InvalidArgument, "file content does not match filename extension")
+	}
+
+	return expectedMIME, nil
 }
 
 func NewMaterialsHandler(svc *service.Service, logger *slog.Logger) *MaterialsHandler {
@@ -47,9 +118,21 @@ func (h *MaterialsHandler) UploadFile(ctx context.Context, req *pbmaterials.Uplo
 	if len(req.FileContent) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "file_content is required")
 	}
+	if len(req.FileContent) > maxUploadFileSizeBytes {
+		return nil, status.Errorf(codes.InvalidArgument, "file too large (max %d MB)", maxUploadFileSizeBytes/(1024*1024))
+	}
 
-	if req.Filename == "" {
+	filename := strings.TrimSpace(req.Filename)
+	if filename == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "filename is required")
+	}
+	if utf8.RuneCountInString(filename) > maxNodeNameLen {
+		return nil, status.Errorf(codes.InvalidArgument, "filename is too long (max %d characters)", maxNodeNameLen)
+	}
+
+	mimeType, err := inferAndValidateUploadMIME(filename, req.FileContent)
+	if err != nil {
+		return nil, err
 	}
 
 	var parentID *uint
@@ -58,12 +141,27 @@ func (h *MaterialsHandler) UploadFile(ctx context.Context, req *pbmaterials.Uplo
 		parentID = &pid
 	}
 
-	name := req.Filename
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
+	name := filename
+	if req.Name != nil {
+		name, err = normalizeNodeName(*req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		name, err = normalizeNodeName(filename)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	mimeType := detectMimeType(req.Filename)
+	usedBytes, err := h.service.GetUserStorageUsage(ctx, userID)
+	if err != nil {
+		h.logger.Error("failed to get user storage usage", "error", err, "user_id", userID)
+		return nil, status.Errorf(codes.Internal, "failed to validate user storage usage")
+	}
+	if usedBytes+int64(len(req.FileContent)) > maxUserStorageBytes {
+		return nil, status.Errorf(codes.ResourceExhausted, "user storage limit exceeded (max %d MB)", maxUserStorageBytes/(1024*1024))
+	}
 
 	fileReader := bytes.NewReader(req.FileContent)
 	node, err := h.service.CreateFile(ctx, userID, parentID, name, fileReader, int64(len(req.FileContent)), mimeType, req.Hidden)
@@ -89,30 +187,6 @@ func (h *MaterialsHandler) UploadFile(ctx context.Context, req *pbmaterials.Uplo
 		Size:       nodeWithDetails.File.Size,
 		MimeType:   nodeWithDetails.File.MimeType,
 	}, nil
-}
-
-func detectMimeType(filename string) string {
-	ext := getFileExtension(filename)
-	mimeTypes := map[string]string{
-		".pdf":  "application/pdf",
-		".doc":  "application/msword",
-		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		".txt":  "text/plain",
-		".rtf":  "application/rtf",
-	}
-	if mimeType, ok := mimeTypes[ext]; ok {
-		return mimeType
-	}
-	return "application/octet-stream"
-}
-
-func getFileExtension(filename string) string {
-	for i := len(filename) - 1; i >= 0; i-- {
-		if filename[i] == '.' {
-			return filename[i:]
-		}
-	}
-	return ""
 }
 
 func (h *MaterialsHandler) DownloadFile(ctx context.Context, req *pbmaterials.DownloadFileRequest) (*pbmaterials.DownloadFileResponse, error) {
@@ -235,8 +309,9 @@ func (h *MaterialsHandler) CreateFolder(ctx context.Context, req *pbmaterials.Cr
 		return nil, err
 	}
 
-	if req.Name == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "name is required")
+	name, err := normalizeNodeName(req.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	var parentID *uint
@@ -245,7 +320,7 @@ func (h *MaterialsHandler) CreateFolder(ctx context.Context, req *pbmaterials.Cr
 		parentID = &pid
 	}
 
-	node, err := h.service.CreateFolder(ctx, userID, parentID, req.Name)
+	node, err := h.service.CreateFolder(ctx, userID, parentID, name)
 	if err != nil {
 		h.logger.Error("failed to create folder", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to create folder: %v", err)
@@ -266,10 +341,12 @@ func (h *MaterialsHandler) CreateLink(ctx context.Context, req *pbmaterials.Crea
 		return nil, err
 	}
 
-	if req.Name == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "name is required")
+	name, err := normalizeNodeName(req.Name)
+	if err != nil {
+		return nil, err
 	}
-	if req.Url == "" {
+	url := strings.TrimSpace(req.Url)
+	if url == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "url is required")
 	}
 
@@ -287,7 +364,7 @@ func (h *MaterialsHandler) CreateLink(ctx context.Context, req *pbmaterials.Crea
 		description = req.Description
 	}
 
-	node, err := h.service.CreateLink(ctx, userID, parentID, req.Name, req.Url, title, description)
+	node, err := h.service.CreateLink(ctx, userID, parentID, name, url, title, description)
 	if err != nil {
 		h.logger.Error("failed to create link", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to create link: %v", err)
@@ -311,11 +388,12 @@ func (h *MaterialsHandler) RenameNode(ctx context.Context, req *pbmaterials.Rena
 	if req.NodeId == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "node_id is required")
 	}
-	if req.NewName == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "new_name is required")
+	newName, err := normalizeNodeName(req.NewName)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := h.service.UpdateNodeName(ctx, userID, uint(req.NodeId), req.NewName); err != nil {
+	if err := h.service.UpdateNodeName(ctx, userID, uint(req.NodeId), newName); err != nil {
 		h.logger.Error("failed to rename node", "error", err)
 		return nil, status.Errorf(codes.Internal, "failed to rename node: %v", err)
 	}

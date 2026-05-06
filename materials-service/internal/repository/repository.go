@@ -392,3 +392,21 @@ func (r *Repository) DeleteUserData(ctx context.Context, userID uint) error {
 
 	return nil
 }
+
+// GetTotalActiveFileSizeByUser returns total size in bytes for active user files.
+func (r *Repository) GetTotalActiveFileSizeByUser(ctx context.Context, userID uint) (int64, error) {
+	var total sql.NullInt64
+	err := database.DB.QueryRow(ctx,
+		`SELECT COALESCE(SUM(f.size), 0)
+		 FROM files f
+		 JOIN nodes n ON n.id = f.node_id
+		 WHERE n.user_id = $1 AND n.deleted_at IS NULL`,
+		userID).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return total.Int64, nil
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -15,13 +17,18 @@ type Parser struct {
 	llmClient    *llm.Client
 	parseModel  string
 	maxChars    int
+	areasByID   map[string]string
+	areaIDByName map[string]string
 }
 
 func NewParser(llmClient *llm.Client, parseModel string, maxChars int) *Parser {
+	areasByID, areaIDByName := loadHHAreasCatalog()
 	return &Parser{
 		llmClient:   llmClient,
 		parseModel:  parseModel,
 		maxChars:    maxChars,
+		areasByID:   areasByID,
+		areaIDByName: areaIDByName,
 	}
 }
 
@@ -32,7 +39,7 @@ func (p *Parser) ParseResume(ctx context.Context, text string) (*model.ResumePro
 	}
 
 	systemPrompt := p.buildParseSystemPrompt()
-	userPrompt := fmt.Sprintf("Parse the following resume text and extract structured information:\n\n%s", cleanedText)
+	userPrompt := fmt.Sprintf("Извлеки структурированные данные из текста резюме:\n\n%s", cleanedText)
 
 	messages := []model.Message{
 		{Role: "system", Content: systemPrompt},
@@ -61,6 +68,7 @@ func (p *Parser) ParseResume(ctx context.Context, text string) (*model.ResumePro
 		return nil, nil, fmt.Errorf("failed to parse LLM response: %w", err)
 	}
 
+	p.normalizeDraft(&result.Draft)
 	return &result.Draft, result.Questions, nil
 }
 
@@ -81,36 +89,288 @@ func (p *Parser) removePII(text string) string {
 }
 
 func (p *Parser) buildParseSystemPrompt() string {
-	return `You are a resume parsing assistant. Extract structured information from resume text.
+	return `Ты помощник по парсингу резюме. Нужно извлечь структурированные данные из текста резюме.
 
-CRITICAL RULES:
-1. Return ONLY valid JSON, no markdown, no code blocks.
-2. Fill ResumeProfileDraft with extracted information.
-3. Set confidence (0.0-1.0) for each important field.
-4. If uncertain, set field to null and confidence < 0.6.
-5. Extract 5-10 top skills into skills_top.
-6. ALWAYS extract target_roles: infer 1-3 desired/likely job roles from the resume (current job title, last position, "looking for" section, or from experience and skills). Put the most relevant role first. Examples: "Backend Developer", "Go Developer", "Software Engineer". Do not leave target_roles empty if the resume contains any job title or role description.
-7. Optionally fill professional_role_candidates with alternative roles and confidence scores.
-8. Generate 3-4 clarifying questions ONLY about fields with low confidence: target_roles, experience_level, areas, salary_min, work_format.
+КРИТИЧЕСКИЕ ПРАВИЛА:
+1) Верни ТОЛЬКО валидный JSON. Без Markdown, без пояснений, без блоков кода.
+2) Заполни ResumeProfileDraft максимально точно по тексту резюме.
+3) Для важных полей проставляй confidence в диапазоне 0.0..1.0.
+4) Если поле не удалось достоверно определить, оставь его пустым/нулевым и поставь confidence < 0.6.
+5) Извлеки 5-10 ключевых навыков в skills_top.
+6) Обязательно заполни target_roles (1-3 наиболее вероятные роли), если в резюме есть опыт/должности.
+7) professional_role_candidates можно заполнить, если есть разумные альтернативные роли.
+8) Сгенерируй 3-4 уточняющих вопроса ТОЛЬКО по полям с низкой уверенностью: target_roles, experience_level, areas, salary_min, work_format.
 
-Response format:
+ПРАВИЛА ДЛЯ РЕГИОНОВ (ОЧЕНЬ ВАЖНО):
+- Поле areas должно быть массивом объектов с человекочитаемым названием региона в areas[].name.
+- name должен быть текстом (например: "Москва", "Санкт-Петербург", "Казань", "Россия", "Минск"), а НЕ числовым кодом.
+- Никогда не записывай цифровой ID в name.
+- Если известен только ID региона, положи его в areas[].id, а в name попробуй вывести читаемое название из контекста резюме.
+- Если регион совсем не удалось определить, лучше оставить areas пустым, чем возвращать числовой мусор в name.
+
+ПРАВИЛА ДЛЯ ОПЫТА (ОЧЕНЬ ВАЖНО):
+- experience_level должен быть только одним из значений HH API:
+  - "noExperience" (менее года)
+  - "between1And3" (1-3 года)
+  - "between3And6" (3-6 лет)
+  - "moreThan6" (6+ лет)
+- Не возвращай произвольные значения вроде "middle", "junior", "5 years" в поле experience_level.
+- Если опыт определить нельзя, верни null.
+
+ПРАВИЛА ДЛЯ ФОРМАТА РАБОТЫ:
+- work_format должен содержать только значения из списка: "remote", "hybrid", "office".
+- Если формат не определен — верни пустой массив.
+
+ОТВЕТ В ФОРМАТЕ:
 {
   "draft": {
-    "target_roles": ["Primary Role", "Another Role"],
+    "target_roles": ["Backend Developer", "Go Developer"],
     "professional_role_candidates": [{"id": "...", "name": "...", "confidence": 0.0}],
     "experience_level": null,
-    "areas": [{"id": "...", "name": "...", "confidence": 0.0}],
+    "areas": [{"id": "...", "name": "Москва", "confidence": 0.0}],
     "salary_min": null,
     "currency": null,
     "work_format": [],
     "skills_top": [],
     "notes": null,
-    "confidence": {"target_roles": 0.9, ...}
+    "confidence": {"target_roles": 0.9, "areas": 0.7}
   },
   "questions": [
-    {"id": "target_roles", "text": "...", "type": "single_choice|free_text", "options": []}
+    {"id": "areas", "text": "Уточните желаемый регион поиска работы", "type": "free_text", "options": []}
   ]
 }`
+}
+
+func (p *Parser) normalizeDraft(draft *model.ResumeProfileDraft) {
+	if draft == nil {
+		return
+	}
+
+	normalizedAreas := make([]model.Area, 0, len(draft.Areas))
+	for i := range draft.Areas {
+		area := &draft.Areas[i]
+		area.ID = strings.TrimSpace(area.ID)
+		area.Name = strings.TrimSpace(area.Name)
+
+		// Частый артефакт LLM: числовой код региона в поле name.
+		if isNumericOnly(area.Name) {
+			if area.ID == "" {
+				area.ID = area.Name
+			}
+			area.Name = ""
+		}
+
+		if area.Name == "" {
+			if area.ID != "" {
+				if name, ok := p.areasByID[area.ID]; ok {
+					area.Name = name
+				}
+			}
+		}
+
+		// Если есть name и нет id, пытаемся привязать к HH-справочнику по имени.
+		if area.ID == "" && area.Name != "" {
+			key := normalizeAreaName(area.Name)
+			if id, ok := p.areaIDByName[key]; ok {
+				area.ID = id
+			}
+		}
+
+		// Жесткая нормализация по требованию:
+		// регион должен быть элементом HH-списка, иначе удаляем.
+		if area.ID == "" || area.Name == "" {
+			continue
+		}
+		if mappedName, ok := p.areasByID[area.ID]; !ok || mappedName == "" {
+			continue
+		} else {
+			area.Name = mappedName
+		}
+
+		normalizedAreas = append(normalizedAreas, *area)
+	}
+	draft.Areas = dedupeAreas(normalizedAreas)
+
+	normalizedExp := normalizeExperienceLevel(draft.ExperienceLevel)
+	draft.ExperienceLevel = normalizedExp
+	draft.WorkFormat = normalizeWorkFormatList(draft.WorkFormat)
+}
+
+func isNumericOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+type hhAreaNode struct {
+	ID    string       `json:"id"`
+	Name  string       `json:"name"`
+	Areas []hhAreaNode `json:"areas"`
+}
+
+func loadHHAreasCatalog() (map[string]string, map[string]string) {
+	areasByID := make(map[string]string)
+	areaIDByName := make(map[string]string)
+
+	candidates := []string{
+		filepath.Clean("hh-data/areas.json"),
+		filepath.Clean("../hh-data/areas.json"),
+		filepath.Clean("../../hh-data/areas.json"),
+	}
+
+	var raw []byte
+	for _, p := range candidates {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			raw = b
+			break
+		}
+	}
+	if len(raw) == 0 {
+		return areasByID, areaIDByName
+	}
+
+	var roots []hhAreaNode
+	if err := json.Unmarshal(raw, &roots); err != nil {
+		return areasByID, areaIDByName
+	}
+
+	var walk func(nodes []hhAreaNode)
+	walk = func(nodes []hhAreaNode) {
+		for _, n := range nodes {
+			id := strings.TrimSpace(n.ID)
+			name := strings.TrimSpace(n.Name)
+			if id != "" && name != "" {
+				areasByID[id] = name
+				key := normalizeAreaName(name)
+				if _, exists := areaIDByName[key]; !exists {
+					areaIDByName[key] = id
+				}
+			}
+			if len(n.Areas) > 0 {
+				walk(n.Areas)
+			}
+		}
+	}
+	walk(roots)
+
+	return areasByID, areaIDByName
+}
+
+func normalizeAreaName(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	v = strings.ReplaceAll(v, "ё", "е")
+	v = strings.Join(strings.Fields(v), " ")
+	return v
+}
+
+func dedupeAreas(in []model.Area) []model.Area {
+	out := make([]model.Area, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, a := range in {
+		key := a.ID + "|" + normalizeAreaName(a.Name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, a)
+	}
+	return out
+}
+
+func normalizeExperienceLevel(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	s := strings.ToLower(strings.TrimSpace(*v))
+	if s == "" {
+		return nil
+	}
+
+	switch s {
+	case "noexperience", "between1and3", "between3and6", "morethan6":
+		out := canonicalExperienceValue(s)
+		return &out
+	}
+
+	switch {
+	case strings.Contains(s, "без опыта"),
+		strings.Contains(s, "менее года"),
+		strings.Contains(s, "<1"),
+		strings.Contains(s, "0-1"),
+		strings.Contains(s, "0–1"):
+		out := "noExperience"
+		return &out
+	case strings.Contains(s, "1-3"),
+		strings.Contains(s, "1–3"),
+		strings.Contains(s, "1 до 3"):
+		out := "between1And3"
+		return &out
+	case strings.Contains(s, "3-6"),
+		strings.Contains(s, "3–6"),
+		strings.Contains(s, "3 до 6"):
+		out := "between3And6"
+		return &out
+	case strings.Contains(s, "6+"),
+		strings.Contains(s, "более 6"),
+		strings.Contains(s, "больше 6"),
+		strings.Contains(s, "свыше 6"):
+		out := "moreThan6"
+		return &out
+	default:
+		// По требованию: если значение вне допустимого списка — очищаем.
+		return nil
+	}
+}
+
+func canonicalExperienceValue(raw string) string {
+	switch raw {
+	case "noexperience":
+		return "noExperience"
+	case "between1and3":
+		return "between1And3"
+	case "between3and6":
+		return "between3And6"
+	case "morethan6":
+		return "moreThan6"
+	default:
+		return raw
+	}
+}
+
+func normalizeWorkFormatList(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, raw := range in {
+		s := strings.ToLower(strings.TrimSpace(raw))
+		canonical := ""
+		switch {
+		case strings.Contains(s, "remote"), strings.Contains(s, "удален"):
+			canonical = "remote"
+		case strings.Contains(s, "hybrid"), strings.Contains(s, "гибрид"):
+			canonical = "hybrid"
+		case strings.Contains(s, "office"), strings.Contains(s, "офис"):
+			canonical = "office"
+		}
+		if canonical == "" {
+			continue
+		}
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, canonical)
+	}
+	return out
 }
 
 func (p *Parser) ApplyAnswers(draft *model.ResumeProfileDraft, questions []model.Question, answers []model.QuestionAnswer) (*model.ResumeProfileDraft, []model.Question, string) {
