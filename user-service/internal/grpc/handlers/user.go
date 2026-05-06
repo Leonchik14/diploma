@@ -23,6 +23,67 @@ import (
 	pbuser "proto/user"
 )
 
+func normalizeExperienceLevelInput(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	s := strings.ToLower(strings.TrimSpace(*v))
+	if s == "" {
+		return nil
+	}
+	switch s {
+	case "noexperience", "нет опыта":
+		out := "noExperience"
+		return &out
+	case "between1and3", "1-3 года", "1–3 года":
+		out := "between1And3"
+		return &out
+	case "between3and6", "3-6 лет", "3–6 лет":
+		out := "between3And6"
+		return &out
+	case "morethan6", "6+ лет", "6+ года":
+		out := "moreThan6"
+		return &out
+	default:
+		out := strings.TrimSpace(*v)
+		if out == "" {
+			return nil
+		}
+		return &out
+	}
+}
+
+func normalizeWorkFormatsInput(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, raw := range in {
+		s := strings.ToLower(strings.TrimSpace(raw))
+		canonical := ""
+		switch {
+		case strings.Contains(s, "remote"), strings.Contains(s, "удален"):
+			canonical = "remote"
+		case strings.Contains(s, "hybrid"), strings.Contains(s, "гибрид"):
+			canonical = "hybrid"
+		case strings.Contains(s, "office"), strings.Contains(s, "офис"):
+			canonical = "office"
+		default:
+			canonical = strings.TrimSpace(raw)
+		}
+		if canonical == "" {
+			continue
+		}
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, canonical)
+	}
+	return out
+}
+
 type UserHandler struct {
 	pbuser.UnimplementedUserServiceServer
 	cfg                *config.Config
@@ -393,6 +454,7 @@ func (h *UserHandler) UpsertResumeProfileInternal(ctx context.Context, req *pbus
 	if workFormat == nil {
 		workFormat = []string{}
 	}
+	workFormat = normalizeWorkFormatsInput(workFormat)
 	skillsTop := req.Profile.SkillsTop
 	if skillsTop == nil {
 		skillsTop = []string{}
@@ -412,8 +474,10 @@ func (h *UserHandler) UpsertResumeProfileInternal(ctx context.Context, req *pbus
 		cf[k] = v
 	}
 
+	normalizedExperience := normalizeExperienceLevelInput(req.Profile.ExperienceLevel)
+
 	version, err := h.resumeRepo.Upsert(ctx, uint(req.UserId), statusStr, req.SourceMaterialId,
-		targetRoles, req.Profile.ExperienceLevel, areaIDs, salaryMin, req.Profile.Currency,
+		targetRoles, normalizedExperience, areaIDs, salaryMin, req.Profile.Currency,
 		workFormat, skillsTop, req.Profile.EducationLevel, req.Profile.Notes,
 		conf, cf)
 	if err != nil {
@@ -433,7 +497,10 @@ func (h *UserHandler) PatchResumeProfileInternal(ctx context.Context, req *pbuse
 			patch["target_roles"] = req.Patch.TargetRoles
 		}
 		if req.Patch.ExperienceLevel != nil {
-			patch["experience_level"] = *req.Patch.ExperienceLevel
+			normalized := normalizeExperienceLevelInput(req.Patch.ExperienceLevel)
+			if normalized != nil {
+				patch["experience_level"] = *normalized
+			}
 		}
 		if len(req.Patch.Areas) > 0 {
 			ids := make([]string, 0, len(req.Patch.Areas))
@@ -449,7 +516,7 @@ func (h *UserHandler) PatchResumeProfileInternal(ctx context.Context, req *pbuse
 			patch["currency"] = *req.Patch.Currency
 		}
 		if len(req.Patch.WorkFormat) > 0 {
-			patch["work_format"] = req.Patch.WorkFormat
+			patch["work_format"] = normalizeWorkFormatsInput(req.Patch.WorkFormat)
 		}
 		if len(req.Patch.SkillsTop) > 0 {
 			patch["skills_top"] = req.Patch.SkillsTop
@@ -531,9 +598,12 @@ func (h *UserHandler) UpdateResumeProfile(ctx context.Context, req *pbuser.Updat
 			cf[k] = v
 		}
 	}
+	normalizedExperience := normalizeExperienceLevelInput(req.Profile.ExperienceLevel)
+	normalizedWorkFormat := normalizeWorkFormatsInput(req.Profile.WorkFormat)
+
 	_, err := h.resumeRepo.Upsert(ctx, userID, statusStr, sourceMaterialID,
-		req.Profile.TargetRoles, req.Profile.ExperienceLevel, areaIDs, salaryMin, req.Profile.Currency,
-		req.Profile.WorkFormat, req.Profile.SkillsTop, req.Profile.EducationLevel, req.Profile.Notes,
+		req.Profile.TargetRoles, normalizedExperience, areaIDs, salaryMin, req.Profile.Currency,
+		normalizedWorkFormat, req.Profile.SkillsTop, req.Profile.EducationLevel, req.Profile.Notes,
 		conf, cf)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to upsert resume profile")

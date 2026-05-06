@@ -439,7 +439,7 @@ func convertResumeProfileDraft(draft *model.ResumeProfileDraft) *pbcoach.ResumeP
 
 	pbDraft := &pbcoach.ResumeProfileDraft{
 		TargetRoles:     targetRoles,
-		ExperienceLevel: draft.ExperienceLevel,
+		ExperienceLevel: humanReadableExperienceLevel(draft.ExperienceLevel),
 		SalaryMin:       draft.SalaryMin,
 		Currency:        draft.Currency,
 		WorkFormat:      draft.WorkFormat,
@@ -467,6 +467,26 @@ func convertResumeProfileDraft(draft *model.ResumeProfileDraft) *pbcoach.ResumeP
 	}
 
 	return pbDraft
+}
+
+func humanReadableExperienceLevel(level *string) *string {
+	if level == nil {
+		return nil
+	}
+	var out string
+	switch *level {
+	case "noExperience":
+		out = "Нет опыта"
+	case "between1And3":
+		out = "1-3 года"
+	case "between3And6":
+		out = "3-6 лет"
+	case "moreThan6":
+		out = "6+ лет"
+	default:
+		out = *level
+	}
+	return &out
 }
 
 func convertQuestions(questions []model.Question) []*pbcoach.Question {
