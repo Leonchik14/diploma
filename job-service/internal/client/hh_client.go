@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,12 @@ type HHLogoURLs struct {
 
 type HHArea struct {
 	Name string `json:"name"`
+}
+
+type HHAreaNode struct {
+	ID    string       `json:"id"`
+	Name  string       `json:"name"`
+	Areas []HHAreaNode `json:"areas"`
 }
 
 type HHResponse struct {
@@ -222,6 +229,61 @@ func (c *HHClient) GetVacancyByID(ctx context.Context, vacancyID string) (*HHVac
 		return nil, fmt.Errorf("failed to decode vacancy: %w", err)
 	}
 	return &v, nil
+}
+
+func (c *HHClient) ListAreaNames(ctx context.Context) ([]string, error) {
+	u := fmt.Sprintf("https://%s/areas", c.host)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("HH-User-Agent", c.userAgent)
+	if c.appToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.appToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch areas: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read HH areas response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("hh.ru areas returned status %d", resp.StatusCode)
+	}
+
+	var roots []HHAreaNode
+	if err := json.Unmarshal(body, &roots); err != nil {
+		return nil, fmt.Errorf("failed to decode HH areas: %w", err)
+	}
+
+	seen := make(map[string]struct{}, 4096)
+	names := make([]string, 0, 4096)
+	var walk func([]HHAreaNode)
+	walk = func(nodes []HHAreaNode) {
+		for _, n := range nodes {
+			name := strings.TrimSpace(n.Name)
+			if name != "" {
+				if _, ok := seen[name]; !ok {
+					seen[name] = struct{}{}
+					names = append(names, name)
+				}
+			}
+			if len(n.Areas) > 0 {
+				walk(n.Areas)
+			}
+		}
+	}
+	walk(roots)
+
+	sort.Strings(names)
+	return names, nil
 }
 
 // professional_role=96 — "Программист, разработчик" в справочнике HH (как в рабочем примере).

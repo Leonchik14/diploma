@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"job-service/internal/client"
 	"job-service/internal/repository"
@@ -20,15 +21,17 @@ type Service struct {
 	hhClient      *client.HHClient
 	favoritesRepo *repository.FavoritesRepo
 	areaNames     []string
+	areasOnce     sync.Once
+	areasErr      error
+	areasMu       sync.RWMutex
 }
 
 func NewService(userClient *client.UserClient, hhClient *client.HHClient, favoritesRepo *repository.FavoritesRepo) *Service {
-	areaNames := loadAreaNamesCatalog()
 	return &Service{
 		userClient:    userClient,
 		hhClient:      hhClient,
 		favoritesRepo: favoritesRepo,
-		areaNames:     areaNames,
+		areaNames:     nil,
 	}
 }
 
@@ -60,11 +63,24 @@ func (s *Service) GetVacancy(ctx context.Context, vacancyID string) (*client.HHV
 }
 
 func (s *Service) ListAreas(ctx context.Context) ([]string, error) {
-	if len(s.areaNames) == 0 {
-		return nil, fmt.Errorf("areas catalog is not loaded")
+	s.areasOnce.Do(func() {
+		names, err := s.hhClient.ListAreaNames(ctx)
+		if err != nil {
+			s.areasErr = err
+			return
+		}
+		s.areasMu.Lock()
+		s.areaNames = names
+		s.areasMu.Unlock()
+	})
+
+	if s.areasErr != nil {
+		return nil, fmt.Errorf("areas catalog is not loaded: %w", s.areasErr)
 	}
+	s.areasMu.RLock()
 	out := make([]string, len(s.areaNames))
 	copy(out, s.areaNames)
+	s.areasMu.RUnlock()
 	return out, nil
 }
 
