@@ -156,6 +156,7 @@ func normalizeAreaIDsInput(in []*pbuser.Area) []string {
 	}
 	out := make([]string, 0, len(in))
 	seen := make(map[string]struct{}, len(in))
+	allRegionsSelected := false
 	for _, a := range in {
 		if a == nil {
 			continue
@@ -171,13 +172,22 @@ func normalizeAreaIDsInput(in []*pbuser.Area) []string {
 		}
 		low := strings.ToLower(candidate)
 		if low == "все регионы" || low == "all regions" || low == "любой регион" || low == "не важно" {
-			return []string{}
+			allRegionsSelected = true
+			continue
 		}
 		if _, ok := seen[candidate]; ok {
 			continue
 		}
 		seen[candidate] = struct{}{}
 		out = append(out, candidate)
+	}
+	// Если выбраны конкретные регионы, "Все регионы" игнорируем.
+	if len(out) > 0 {
+		return out
+	}
+	// Если выбрано только "Все регионы" (или его синонимы) — храним пустой список регионов.
+	if allRegionsSelected {
+		return []string{}
 	}
 	return out
 }
