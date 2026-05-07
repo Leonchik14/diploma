@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"testing"
 
@@ -17,7 +16,7 @@ import (
 )
 
 type mockSearchJobsService struct {
-	searchJobsFunc    func(ctx context.Context, userID string, page, perPage int) (*client.HHResponse, error)
+	searchJobsFunc     func(ctx context.Context, userID string, page, perPage int) (*client.HHResponse, error)
 	getFavoriteIDsFunc func(ctx context.Context, userID string) ([]string, error)
 }
 
@@ -35,8 +34,20 @@ func (m *mockSearchJobsService) GetFavoriteIDs(ctx context.Context, userID strin
 	return nil, nil
 }
 
-func (m *mockSearchJobsService) AddFavorite(ctx context.Context, userID, vacancyID string) error { return nil }
-func (m *mockSearchJobsService) RemoveFavorite(ctx context.Context, userID, vacancyID string) error { return nil }
+func (m *mockSearchJobsService) GetVacancy(ctx context.Context, vacancyID string) (*client.HHVacancy, error) {
+	return nil, nil
+}
+
+func (m *mockSearchJobsService) ListAreas(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockSearchJobsService) AddFavorite(ctx context.Context, userID, vacancyID string) error {
+	return nil
+}
+func (m *mockSearchJobsService) RemoveFavorite(ctx context.Context, userID, vacancyID string) error {
+	return nil
+}
 func (m *mockSearchJobsService) ListFavorites(ctx context.Context, userID string) ([]*client.HHVacancy, error) {
 	return nil, nil
 }
@@ -105,49 +116,35 @@ func TestSearchJobs_RejectsWhenTargetRolesEmpty(t *testing.T) {
 
 func TestSearchJobs_PaginationBounds(t *testing.T) {
 	logger := slog.Default()
-	var gotPage, gotPerPage int
 	svc := &mockSearchJobsService{
 		searchJobsFunc: func(ctx context.Context, userID string, page, perPage int) (*client.HHResponse, error) {
-			gotPage, gotPerPage = page, perPage
 			return &client.HHResponse{Items: nil, Found: 0, Pages: 0, Page: page}, nil
 		},
 	}
 	h := NewJobsHandler(svc, logger)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-user-id", "1", "x-internal-api-key", "key"))
 
-	t.Run("negative page clamped to 0", func(t *testing.T) {
+	t.Run("negative page returns invalid argument", func(t *testing.T) {
 		req := &pbjobs.SearchJobsRequest{Page: -1, PerPage: 10}
 		_, err := h.SearchJobs(ctx, req)
-		if err != nil {
-			t.Fatal(err)
+		if err == nil {
+			t.Fatal("expected error for negative page")
 		}
-		if gotPage != 0 {
-			t.Errorf("expected page 0, got %d", gotPage)
-		}
-		if gotPerPage != 10 {
-			t.Errorf("expected perPage 10, got %d", gotPerPage)
+		st, ok := status.FromError(err)
+		if !ok || st.Code() != codes.InvalidArgument {
+			t.Fatalf("expected InvalidArgument, got %v", err)
 		}
 	})
 
-	t.Run("per_page 0 defaults to 10", func(t *testing.T) {
+	t.Run("per_page 0 returns invalid argument", func(t *testing.T) {
 		req := &pbjobs.SearchJobsRequest{Page: 0, PerPage: 0}
 		_, err := h.SearchJobs(ctx, req)
-		if err != nil {
-			t.Fatal(err)
+		if err == nil {
+			t.Fatal("expected error for per_page=0")
 		}
-		if gotPerPage != 10 {
-			t.Errorf("expected perPage 10, got %d", gotPerPage)
-		}
-	})
-
-	t.Run("per_page over 100 clamped to 100", func(t *testing.T) {
-		req := &pbjobs.SearchJobsRequest{Page: 0, PerPage: 200}
-		_, err := h.SearchJobs(ctx, req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if gotPerPage != 100 {
-			t.Errorf("expected perPage 100, got %d", gotPerPage)
+		st, ok := status.FromError(err)
+		if !ok || st.Code() != codes.InvalidArgument {
+			t.Fatalf("expected InvalidArgument, got %v", err)
 		}
 	})
 }

@@ -285,15 +285,9 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 
 	// resume_uploaded: считаем по наличию записи в таблице резюме
 	resumeUploaded := false
-	var humanizedResume *pbuser.ResumeProfileHumanized
 	if h.resumeRepo != nil {
 		if row, err := h.resumeRepo.GetByUserID(ctx, uint(userID)); err == nil && row != nil {
 			resumeUploaded = true
-			humanizedResume = &pbuser.ResumeProfileHumanized{
-				WorkFormat: humanizeWorkFormats(row.WorkFormat),
-				Areas:      humanizeAreasOrAllRegions(row.AreaIDs),
-			}
-			humanizedResume.ExperienceLevel = humanizeExperienceLevel(row.ExperienceLevel)
 		}
 	}
 
@@ -308,17 +302,16 @@ func (h *UserHandler) GetMe(ctx context.Context, req *pbuser.GetMeRequest) (*pbu
 
 	return &pbuser.GetMeResponse{
 		User: &pbuser.UserProfile{
-			Id:                     uint32(userID),
-			FirstName:              firstName,
-			LastName:               lastName,
-			Email:                  email,
-			Username:               username,
-			ResumeUploaded:         resumeUploaded,
-			TotalInterviews:        totalIv,
-			CompletedInterviews:    completedIv,
-			UpcomingInterviews:     upcomingIv,
-			NotificationsEnabled:   notificationsEnabled,
-			ResumeProfileHumanized: humanizedResume,
+			Id:                   uint32(userID),
+			FirstName:            firstName,
+			LastName:             lastName,
+			Email:                email,
+			Username:             username,
+			ResumeUploaded:       resumeUploaded,
+			TotalInterviews:      totalIv,
+			CompletedInterviews:  completedIv,
+			UpcomingInterviews:   upcomingIv,
+			NotificationsEnabled: notificationsEnabled,
 		},
 	}, nil
 }
