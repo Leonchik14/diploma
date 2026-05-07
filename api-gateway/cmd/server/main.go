@@ -26,6 +26,8 @@ import (
 	pbgateway "proto/gateway"
 )
 
+const maxGRPCMessageSizeBytes = 32 * 1024 * 1024
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		slog.Info("No .env file found")
@@ -53,6 +55,8 @@ func main() {
 	}
 
 	s := grpc.NewServer(
+		grpc.MaxRecvMsgSize(maxGRPCMessageSizeBytes),
+		grpc.MaxSendMsgSize(maxGRPCMessageSizeBytes),
 		grpc.ChainUnaryInterceptor(loggingInterceptor(logger), authInterceptor.Unary()),
 		grpc.StreamInterceptor(authInterceptor.Stream()),
 	)

@@ -31,6 +31,8 @@ type GatewayProxy struct {
 	calendarClient  pbcalendar.CalendarServiceClient
 }
 
+const maxGRPCMessageSizeBytes = 32 * 1024 * 1024
+
 func NewGatewayProxy(cfg *config.Config, logger *slog.Logger) *GatewayProxy {
 	authConn := dial(cfg.UserServiceURL)
 	userConn := dial(cfg.UserServiceURL)
@@ -52,7 +54,14 @@ func NewGatewayProxy(cfg *config.Config, logger *slog.Logger) *GatewayProxy {
 }
 
 func dial(addr string) *grpc.ClientConn {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxGRPCMessageSizeBytes),
+			grpc.MaxCallSendMsgSize(maxGRPCMessageSizeBytes),
+		),
+	)
 	if err != nil {
 		panic(err)
 	}

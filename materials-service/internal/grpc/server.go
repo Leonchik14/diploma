@@ -20,8 +20,12 @@ import (
 	pbmaterials "proto/materials"
 )
 
+const maxGRPCMessageSizeBytes = 32 * 1024 * 1024
+
 func NewServer(cfg *config.Config, svc *service.Service, logger *slog.Logger) *grpc.Server {
 	s := grpc.NewServer(
+		grpc.MaxRecvMsgSize(maxGRPCMessageSizeBytes),
+		grpc.MaxSendMsgSize(maxGRPCMessageSizeBytes),
 		grpc.ChainUnaryInterceptor(loggingInterceptor(logger), internalAuthInterceptor(cfg.InternalAPIKey, logger)),
 	)
 
