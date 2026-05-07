@@ -91,6 +91,39 @@ func (r *Repository) GetNodeByMaterialID(ctx context.Context, userID uint, mater
 	return &node, nil
 }
 
+// GetNodeByName retrieves an active node by name in a specific parent for a user.
+func (r *Repository) GetNodeByName(ctx context.Context, userID uint, parentID *uint, name string) (*models.Node, error) {
+	var node models.Node
+	var err error
+
+	if parentID == nil {
+		err = database.DB.QueryRow(ctx,
+			`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at
+			 FROM nodes
+			 WHERE user_id = $1 AND parent_id IS NULL AND name = $2 AND deleted_at IS NULL`,
+			userID, name).Scan(
+			&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
+			&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+	} else {
+		err = database.DB.QueryRow(ctx,
+			`SELECT id, material_id, user_id, parent_id, type, name, hidden, created_at, updated_at, deleted_at
+			 FROM nodes
+			 WHERE user_id = $1 AND parent_id = $2 AND name = $3 AND deleted_at IS NULL`,
+			userID, *parentID, name).Scan(
+			&node.ID, &node.MaterialID, &node.UserID, &node.ParentID, &node.Type, &node.Name,
+			&node.Hidden, &node.CreatedAt, &node.UpdatedAt, &node.DeletedAt)
+	}
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("node not found")
+		}
+		return nil, err
+	}
+
+	return &node, nil
+}
+
 // ListChildren retrieves all children of a parent node (for user), excluding hidden nodes
 func (r *Repository) ListChildren(ctx context.Context, userID uint, parentID *uint) ([]models.Node, error) {
 	var rows pgx.Rows

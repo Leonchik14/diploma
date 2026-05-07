@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -34,6 +35,8 @@ type CoachService struct {
 	jobsClient       *client.JobsClient
 	userClient       *client.UserClient
 }
+
+var ErrResumeNotUploaded = errors.New("resume is not uploaded")
 
 func NewCoachService(llmClient *llm.Client, repo *repository.Repository, model string, chatHistoryLimit int, jobsClient *client.JobsClient, userClient *client.UserClient) *CoachService {
 	return &CoachService{
@@ -136,6 +139,9 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 	if s.jobsClient == nil {
 		return "", fmt.Errorf("jobs client not configured")
 	}
+	if err := s.ensureResumeUploaded(ctx, userID); err != nil {
+		return "", err
+	}
 
 	vacancy, err := s.jobsClient.GetVacancy(ctx, vacancyID)
 	if err != nil {
@@ -172,16 +178,9 @@ func (s *CoachService) PrepareForVacancy(ctx context.Context, userID uint, vacan
 }
 
 func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score float64, recommendations string, err error) {
-	if s.userClient == nil {
-		return 0, "", fmt.Errorf("user client not configured")
-	}
-
-	resp, err := s.userClient.GetResumeProfileInternal(ctx, userID)
+	resp, err := s.getRequiredResumeProfile(ctx, userID)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to get resume profile: %w", err)
-	}
-	if resp.Profile == nil {
-		return 0, "", fmt.Errorf("resume profile not found")
+		return 0, "", err
 	}
 
 	profileText := formatResumeProfileForLLM(resp.Profile)
@@ -218,6 +217,25 @@ func (s *CoachService) ReviewResume(ctx context.Context, userID uint) (score flo
 		"score": score,
 	})
 	return score, recBody, nil
+}
+
+func (s *CoachService) ensureResumeUploaded(ctx context.Context, userID uint) error {
+	_, err := s.getRequiredResumeProfile(ctx, userID)
+	return err
+}
+
+func (s *CoachService) getRequiredResumeProfile(ctx context.Context, userID uint) (*pbuser.GetResumeProfileInternalResponse, error) {
+	if s.userClient == nil {
+		return nil, fmt.Errorf("user client not configured")
+	}
+	resp, err := s.userClient.GetResumeProfileInternal(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resume profile: %w", err)
+	}
+	if resp == nil || resp.Profile == nil || resp.SourceMaterialId == nil || strings.TrimSpace(resp.GetSourceMaterialId()) == "" {
+		return nil, ErrResumeNotUploaded
+	}
+	return resp, nil
 }
 
 const (

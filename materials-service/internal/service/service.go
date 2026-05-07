@@ -71,7 +71,17 @@ func (s *Service) CreateFile(ctx context.Context, userID uint, parentID *uint, n
 		return nil, err
 	}
 	if exists {
-		return nil, fmt.Errorf("name already exists in this folder")
+		existingNode, getErr := s.repo.GetNodeByName(ctx, userID, parentID, name)
+		if getErr != nil {
+			return nil, fmt.Errorf("name already exists in this folder")
+		}
+		if existingNode.Type != models.NodeTypeFile {
+			return nil, fmt.Errorf("name already exists in this folder")
+		}
+		if err := s.UpdateFile(ctx, userID, existingNode.ID, name, content, size, mimeType); err != nil {
+			return nil, err
+		}
+		return existingNode, nil
 	}
 
 	node, err := s.repo.CreateNode(ctx, userID, parentID, models.NodeTypeFile, name, hidden)

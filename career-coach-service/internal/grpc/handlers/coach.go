@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log/slog"
-	"unicode/utf8"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"career-coach-service/internal/model"
 	"career-coach-service/internal/requestctx"
@@ -248,6 +249,9 @@ func (h *CoachHandler) PrepareForVacancy(ctx context.Context, req *pbcoach.Prepa
 
 	recommendations, err := h.coachService.PrepareForVacancy(ctx, userID, req.VacancyId)
 	if err != nil {
+		if errors.Is(err, service.ErrResumeNotUploaded) {
+			return nil, status.Errorf(codes.FailedPrecondition, "resume is not uploaded")
+		}
 		h.logger.Error("failed to prepare for vacancy", "error", err, "user_id", userID, "vacancy_id", req.VacancyId)
 		return nil, status.Errorf(codes.Internal, "failed to get recommendations: %v", err)
 	}
@@ -265,6 +269,9 @@ func (h *CoachHandler) ReviewResume(ctx context.Context, req *pbcoach.ReviewResu
 
 	score, recommendations, err := h.coachService.ReviewResume(ctx, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrResumeNotUploaded) {
+			return nil, status.Errorf(codes.FailedPrecondition, "resume is not uploaded")
+		}
 		h.logger.Error("failed to review resume", "error", err, "user_id", userID)
 		return nil, status.Errorf(codes.Internal, "failed to review resume: %v", err)
 	}
